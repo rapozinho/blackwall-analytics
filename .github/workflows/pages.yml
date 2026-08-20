@@ -1,0 +1,62 @@
+# Publica a demonstração estática no GitHub Pages.
+#
+# O que vai para o ar é o frontend com `VITE_DEMO=1`: em vez de chamar a API, ele
+# lê os snapshots de `frontend/public/fixtures/` (gerados por
+# `tools/gen_fixtures.py` contra a stack real). Não existe backend nem banco no
+# Pages — quem quer a consulta de verdade sobe o `docker compose`.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  # Permite republicar sem novo commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Uma publicação por vez; a mais nova espera a anterior terminar.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: build (modo demonstração)
+        env:
+          VITE_DEMO: "1"
+          # Pages de projeto serve em /<repo>/: o build precisa saber o subcaminho.
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
