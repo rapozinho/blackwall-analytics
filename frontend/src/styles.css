@@ -42,6 +42,9 @@ a{ color:inherit; text-decoration:none; }
   box-shadow:0 0 10px var(--red); animation:bw-pulse 3.4s ease-in-out infinite;
 }
 .content{ position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:30px 20px 72px; }
+/* A tela das bases abre com o titulo gigante: os 30px de respiro que as outras
+   telas querem viram um vao vazio embaixo da barra. */
+.content:has(> .wall){ padding-top:14px; }
 
 h1{ font-size:25px; font-weight:600; margin:0 0 5px; letter-spacing:.01em; }
 .sub{ color:var(--muted); font-size:13.5px; margin:0 0 22px; }
@@ -192,7 +195,7 @@ table.grid-tbl tbody tr:hover{ background:var(--surface-2); }
     radial-gradient(120% 85% at 50% 45%,transparent 38%,rgba(5,7,12,.86) 100%);
 }
 
-.wall-hero{ padding:44px 0 30px; max-width:660px; }
+.wall-hero{ padding:0 0 30px; max-width:660px; }
 .wall-title{
   position:relative; margin:0; font-size:clamp(46px,10vw,104px); font-weight:700;
   line-height:.92; letter-spacing:.02em;
@@ -691,7 +694,7 @@ th.num-h{ text-align:right; }
   .base-tel{ gap:18px; }
 }
 @media (max-width:560px){
-  .wall-hero{ padding:26px 0 20px; }
+  .wall-hero{ padding:0 0 20px; }
   .wall-readout{ gap:20px; flex-wrap:wrap; }
   .gate{ min-height:auto; }
 }
