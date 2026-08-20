@@ -1,0 +1,19 @@
+-- Report Master / Casino: NGR - Casino %
+DECLARE @data_ini DATE = '{start1}';
+DECLARE @data_fim DATE = '{end1}';
+DECLARE @data_fim_exclusive DATE = DATEADD(day, 1, @data_fim);
+
+WITH Anterior AS (
+    SELECT SUM(NGR) AS v
+    FROM casino_agg_hourly WITH(NOLOCK)
+    WHERE date_time >= DATEADD(month, -1, @data_ini) AND date_time < @data_ini
+),
+Atual AS (
+    SELECT SUM(NGR) AS v
+    FROM casino_agg_hourly WITH(NOLOCK)
+    WHERE date_time >= @data_ini AND date_time < @data_fim_exclusive
+)
+SELECT
+    CAST((a.v - p.v) * 1.0 / NULLIF(p.v, 0) AS DECIMAL(18,6)) AS [NGR - Casino %]
+FROM Anterior p
+CROSS JOIN Atual a;

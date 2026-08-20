@@ -1,0 +1,142 @@
+# BlackWall Analytics — stack completa de demonstracao.
+#
+#   docker compose up -d --build      # sobe banco + dados ficticios + API + web
+#   -> http://127.0.0.1:8080
+#
+# Nao precisa de `.env` nem de credencial nenhuma: o `sqlserver` deste arquivo E
+# o banco, e o servico `dbinit` cria as 4 bases e as popula com dado gerado
+# (`db/generate.py`). Nada aqui fala com sistema de terceiro.
+#
+# As senhas abaixo sao de ambiente local e estao no repositorio de proposito — o
+# banco so escuta em 127.0.0.1. Para publicar isto em rede, troque as duas
+# variaveis e leia o DEPLOY.md, que descreve o desenho de producao (login
+# read-only dedicado, SSO, TLS).
+#
+# Ordem: sqlserver -> dbinit (roda e sai) -> backend -> frontend.
+
+services:
+  # ---------------------------------------------------------------- banco ---- #
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-BlackWall!Dev2026}
+      MSSQL_PID: Developer
+      # Teto de memoria: sem isto o SQL Server assume que a maquina e dele. E um
+      # teto, nao uma reserva — o processo cresce conforme usa.
+      #
+      # 6 GB e nao 2: o monitoring de afiliados da Lumen pede memory grant de
+      # ~1,1 GB (hash join sobre a deduplicacao por username), e o limite do
+      # workload group 'default' e 25% do pool. Com 2 GB a query morre com
+      # "Could not get the memory grant ... exceeds the maximum configuration
+      # limit". Se a maquina for apertada, use SEED_ESCALA menor em vez de
+      # baixar isto.
+      MSSQL_MEMORY_LIMIT_MB: ${MSSQL_MEMORY_LIMIT_MB:-6144}
+    ports:
+      # Publicada so' para esta maquina, para inspecionar com um cliente SQL.
+      - "127.0.0.1:${PORTA_SQL:-11433}:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+      # Mesma pasta montada no `dbinit`: o Python escreve os CSV e o BULK INSERT
+      # le de dentro do servidor.
+      - seed-data:/seed
+    healthcheck:
+      # A imagem do servidor nao traz sqlcmd; porta aberta e o que da para checar
+      # daqui. Quem espera o login de verdade e o init.py, em loop.
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/1433' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [interna]
+
+  # ------------------------------------------------- bases + dado ficticio --- #
+  dbinit:
+    build:
+      context: ./db
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      SEED_SERVER: sqlserver
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-BlackWall!Dev2026}
+      DB_USER: ${DB_USER:-blackwall_ro}
+      DB_PASSWORD: ${DB_PASSWORD:-BlackWall!Ro2026}
+      # Vertical de negocio: `bet` (padrao) ou `ecommerce`. Entra na versao do
+      # seed, entao trocar de vertical regera o dado no proximo `up`.
+      VERTICAL: ${VERTICAL:-bet}
+      # Volume de dado gerado: `SEED_ESCALA=3` triplica os clientes.
+      SEED_ESCALA: ${SEED_ESCALA:-1}
+    volumes:
+      - seed-data:/seed
+      # Catalogo de SQL somente leitura: `verify_catalog.py` compila os 292
+      # arquivos contra as bases recem-criadas.
+      - ./backend/app/sql:/catalog:ro
+    networks: [interna]
+
+  # ------------------------------------------------------------------ API ---- #
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      dbinit:
+        condition: service_completed_successfully
+    environment:
+      SERVER: sqlserver
+      DB_USER: ${DB_USER:-blackwall_ro}
+      DB_PASSWORD: ${DB_PASSWORD:-BlackWall!Ro2026}
+      # Precisa casar com a vertical do `dbinit`: o rotulo vem daqui e o dado de
+      # la. `run.ps1` garante que as duas recebem o mesmo valor.
+      VERTICAL: ${VERTICAL:-bet}
+      DATABASE_ZEPHYR: dw_zephyr
+      DATABASE_QUASAR: dw_quasar
+      DATABASE_LUMEN: dw_lumen
+      DATABASE_KESTREL: dw_kestrel
+      ODBC_DRIVER: ${ODBC_DRIVER:-ODBC Driver 18 for SQL Server}
+      # O driver 18 criptografa por padrao e o certificado do container e
+      # autoassinado: sem TrustServerCertificate o handshake falha.
+      DB_ENCRYPT: ${DB_ENCRYPT:-yes}
+      DB_TRUST_SERVER_CERTIFICATE: ${DB_TRUST_SERVER_CERTIFICATE:-yes}
+      # O navegador fala com o nginx, que fala com a API pela rede interna do
+      # compose: nenhuma requisicao cruza origem, entao a lista fica vazia.
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # !!! LEIA O DEPLOY.md ANTES DE SUBIR ISTO EM REDE COMPARTILHADA !!!
+      # true = qualquer um que alcance a porta ve os dados das 4 bases, sem login.
+      AUTH_DISABLED: ${AUTH_DISABLED:-true}
+    # Nao publica porta: quem fala com a API e' o nginx, pela rede interna.
+    expose:
+      - "8000"
+    # Endurecimento basico: o processo nao precisa de root, nem de escrever no
+    # sistema de arquivos, nem de ganhar privilegio novo.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks: [interna]
+
+  # ------------------------------------------------------------------ web ---- #
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # 127.0.0.1: exposto so' para esta maquina. Para publicar de verdade, ponha
+    # um proxy com TLS na frente e troque para 0.0.0.0 ou a interface certa.
+    ports:
+      - "127.0.0.1:${PORTA_WEB:-8080}:80"
+    security_opt:
+      - no-new-privileges:true
+    networks: [interna]
+
+volumes:
+  mssql-data:
+  seed-data:
+
+networks:
+  interna:
+    driver: bridge

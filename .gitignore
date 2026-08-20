@@ -14,9 +14,13 @@ venv/
 node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo
 
 # Editor / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Claude Code: config local da maquina (permissoes), nao do projeto
+.claude/settings.local.json

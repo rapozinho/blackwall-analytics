@@ -11,7 +11,8 @@ app = FastAPI(title="BlackWall Analytics", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_list,   # restrito à origem interna do frontend
-    allow_methods=["GET"],
+    # POST existe para um endpoint só: encerrar consulta. Todo o resto é leitura.
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 

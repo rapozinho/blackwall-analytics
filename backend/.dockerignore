@@ -1,0 +1,13 @@
+# Segredo nunca entra na imagem: camada de Docker e' legivel por quem tiver a
+# imagem, mesmo que um passo posterior apague o arquivo.
+.env
+.env.*
+!.env.example
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/

@@ -1,0 +1,9 @@
+# node_modules local nao serve na imagem (plataforma/arquitetura podem diferir);
+# o `npm ci` reinstala a partir do lockfile.
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+.env
+.env.*
