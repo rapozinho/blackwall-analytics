@@ -32,6 +32,12 @@ números são os que o SQL Server devolveu; o que não roda ali é a consulta. U
 filtro fora dos snapshots capturados cai no período padrão e a barra do topo diz
 isso na cara.
 
+O snapshot publicado é o da vertical de **e-commerce** — as bases aparecem como
+`Nordika`, `Vellora`, `Cintra` e `Kaya`, e as métricas são GMV, take rate, receita
+por cliente. O mesmo código serve a vertical de apostas com `VERTICAL=bet`
+(seção [Duas verticais no mesmo código](#duas-verticais-no-mesmo-código)); trocar
+a publicação é regerar os fixtures com a stack na outra vertical.
+
 Para ver a coisa consultando o banco de verdade — as 292 queries T-SQL, o job com
 progresso, o cancelamento derrubando a query no servidor — é `docker compose up`
 na sua máquina (seção seguinte).
@@ -414,6 +420,11 @@ tools/gen_fixtures.py  --api http://127.0.0.1:8080   # captura contra a stack re
 
 O snapshot cobre os 6 relatórios nas 4 bases, mais variações de período no
 Overview e as três visões do Retention Cohort — 39 arquivos, ~300 KB.
+
+A vertical vai gravada em `manifest.json` (`"vertical": "ecommerce"`), porque ela
+muda as duas coisas: o rótulo de cada métrica e a ordem de grandeza do dado
+gerado. Para publicar a outra, suba a stack com `VERTICAL=bet` e regere — a barra
+do topo passa a dizer "vertical de apostas" sozinha.
 
 Detalhes que a demo mantém de propósito, porque são parte do desenho:
 

@@ -136,7 +136,13 @@ def main() -> int:
     print("== catalogo ==", flush=True)
     bases = get(args.api, "/api/bases")
     salvar("bases.json", bases)
-    salvar("meta.json", get(args.api, "/api/meta"))
+    meta = get(args.api, "/api/meta")
+    salvar("meta.json", meta)
+    # A vertical fica no manifesto: o snapshot inteiro depende dela (rotulo E
+    # ordem de grandeza do dado), e sem isso nao da para saber o que foi
+    # capturado olhando so' os arquivos.
+    manifesto["vertical"] = meta.get("vertical")
+    print(f"   vertical={meta.get('vertical')} · bases={[b['label'] for b in bases]}", flush=True)
 
     # health/db testa as 4 bases em sequencia com 5s de timeout cada.
     try:

@@ -147,9 +147,13 @@ def _table_label(spec: dict, relpath: str, base_key: str) -> str:
     suffix = stem[len(base_key) + 1:] if stem.lower().startswith(base_key.lower()) else stem
     explicit = spec.get("labels", {}).get(suffix)
     if explicit:
-        return explicit
+        # Passa pelo vocabulario da vertical como qualquer outro texto de saida:
+        # a aba "Afiliados" e "Parceiros" no e-commerce.
+        return vertical.traduz(explicit)
     tail = suffix.split("_")[-1]
-    return f"Query {tail}" if tail.isdigit() else suffix.replace("_", " ").title()
+    if tail.isdigit():
+        return f"Query {tail}"
+    return vertical.traduz(suffix.replace("_", " ").title())
 
 
 def _table(spec: dict, relpath: str, base_key: str, rows: list[dict]) -> dict:

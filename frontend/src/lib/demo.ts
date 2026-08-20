@@ -31,6 +31,8 @@ export interface EntradaFixture {
 
 export interface Manifesto {
   gerado_em: string;
+  /** `bet` ou `ecommerce`: a vertical em que o snapshot foi capturado. */
+  vertical?: string;
   periodo: { date_start: string; date_end: string };
   periodo_comparacao: { date_start2: string; date_end2: string };
   entradas: Record<string, EntradaFixture>;
