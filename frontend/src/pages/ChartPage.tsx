@@ -19,7 +19,7 @@ export default function ChartPage() {
   const [snaps, setSnaps] = useState<{ label: string; params: Record<string, string> }[]>([]);
   const { consultas, iniciar, encerrar } = useJobs();
   const nome = useBaseLabel(base);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
 
   // A consulta vive no provider: voltar para cá encontra o que ficou rodando —
   // ou o resultado que chegou enquanto o usuário estava em outra tela.
@@ -31,14 +31,15 @@ export default function ChartPage() {
   useEffect(() => {
     if (!DEMO || !base || !chartId) return;
     snapshotsDe(chartId, base).then(setSnaps).catch(() => setSnaps([]));
-  }, [base, chartId]);
+  }, [base, chartId, lang]);
 
   useEffect(() => {
     if (base && chartId)
       api.charts(base)
         .then((cs) => setMeta(cs.find((c) => c.id === chartId) ?? null))
         .catch((e) => setErr(e.message));
-  }, [base, chartId]);
+    // O `label` do filtro e a descricao vem traduzidos da API.
+  }, [base, chartId, lang]);
 
   async function aplicar(values: Record<string, string>) {
     if (!base || !chartId) return;

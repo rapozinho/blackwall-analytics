@@ -77,7 +77,7 @@ export default function GalleryPage() {
   const [err, setErr] = useState("");
   // A rota carrega a chave; a tela mostra o nome da operação.
   const nome = useBaseLabel(base);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
 
   useEffect(() => {
     if (!base) return;
@@ -89,7 +89,8 @@ export default function GalleryPage() {
     api.health()
       .then((h) => setSaude(h.bases.find((b) => b.key === base) ?? null))
       .catch(() => { /* sem health a navegação continua liberada */ });
-  }, [base]);
+    // Rotulo e descricao de cada relatorio vem da API: idioma novo, catalogo novo.
+  }, [base, lang]);
 
   const paineis = charts.filter(ehPainel);
   const extracoes = charts.filter((c) => !ehPainel(c));

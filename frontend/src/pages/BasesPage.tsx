@@ -27,7 +27,7 @@ export default function BasesPage() {
   const [breaching, setBreaching] = useState<string | null>(null);
   const navigate = useNavigate();
   const timer = useRef<number | undefined>(undefined);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
 
   useEffect(() => {
     api.bases().then(setBases).catch((e) => setErr(e.message));
@@ -40,7 +40,9 @@ export default function BasesPage() {
       .catch(() => { /* sem health a navegação continua liberada */ })
       .finally(() => setChecking(false));
     return () => clearTimeout(timer.current);
-  }, []);
+    // `lang` nas dependencias: rotulo de vertical e detalhe de health vem do
+    // backend, entao trocar de idioma refaz as chamadas.
+  }, [lang]);
 
   /** Deixa o glitch de entrada rodar antes de trocar de rota. */
   function enter(key: string, e: MouseEvent) {
