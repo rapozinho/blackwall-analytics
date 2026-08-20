@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtDuration } from "../lib/api";
 import { useJobs, type Consulta } from "../lib/jobs";
+import { useI18n } from "../lib/i18n";
 
 /** Duração da desintegração. Casa com `bw-desintegra` no styles.css — mudar num
  *  lugar sem o outro deixa a linha sumir antes da hora ou piscar de volta. */
@@ -9,11 +10,11 @@ const DESINTEGRA_MS = 620;
 
 /** Estado da consulta na linguagem da parede: o LED diz o que está havendo. */
 const ESTADO: Record<Consulta["status"], { tag: string; cls: string }> = {
-  queued:    { tag: "na fila",   cls: "fila" },
-  running:   { tag: "rodando",   cls: "roda" },
-  done:      { tag: "pronta",    cls: "ok" },
-  error:     { tag: "falhou",    cls: "err" },
-  cancelled: { tag: "encerrada", cls: "off" },
+  queued:    { tag: "cq_fila",      cls: "fila" },
+  running:   { tag: "cq_rodando",   cls: "roda" },
+  done:      { tag: "cq_pronta",    cls: "ok" },
+  error:     { tag: "cq_falhou",    cls: "err" },
+  cancelled: { tag: "cq_encerrada", cls: "off" },
 };
 
 /** Resumo do filtro: as datas são o que identifica uma consulta na lista. */
@@ -32,6 +33,7 @@ function resumo(c: Consulta): string {
  *  outra é ruído. Sem ela mostra tudo (tela inicial). */
 export default function ConsultasAtivas({ base }: { base?: string } = {}) {
   const { consultas: todas, encerrar, descartar } = useJobs();
+  const { t } = useI18n();
   // Linhas que já receberam "Dispensar": continuam montadas até a animação
   // terminar, senão o React as removeria antes de dar tempo de ver.
   const [sumindo, setSumindo] = useState<Set<string>>(new Set());
@@ -59,11 +61,13 @@ export default function ConsultasAtivas({ base }: { base?: string } = {}) {
   const rodando = consultas.filter((c) => c.status === "queued" || c.status === "running").length;
 
   return (
-    <section className="transmissoes" aria-label="Consultas em andamento">
+    <section className="transmissoes" aria-label={t("consultas_aria")}>
       <h2 className="transmissoes-t">
-        Consultas
+        {t("consultas")}
         <span className="transmissoes-n">
-          {rodando ? `${rodando} em andamento` : `${consultas.length} recente(s)`}
+          {rodando
+            ? t("n_em_andamento", { n: rodando })
+            : t("n_recentes", { n: consultas.length })}
         </span>
       </h2>
 
@@ -83,21 +87,21 @@ export default function ConsultasAtivas({ base }: { base?: string } = {}) {
                 </span>
                 <span className="tx-resumo">{resumo(c)}</span>
                 <span className="tx-estado">
-                  {e.tag}
+                  {t(e.tag)}
                   {c.elapsed !== null && ` · ${fmtDuration(c.elapsed)}`}
                 </span>
               </Link>
 
               {ativa ? (
                 <button className="tx-acao abortar" onClick={() => encerrar(c.id)}
-                  title="Derruba a consulta no banco">
-                  Encerrar
+                  title={t("encerrar_hint")}>
+                  {t("encerrar")}
                 </button>
               ) : (
                 <button className="tx-acao" disabled={indo}
                   onClick={(ev) => dispensar(c.id, ev.currentTarget)}
-                  title="Tira da lista; o resultado continua no servidor por 30 min">
-                  Dispensar
+                  title={t("dispensar_hint")}>
+                  {t("dispensar")}
                 </button>
               )}
 

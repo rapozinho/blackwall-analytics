@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, HashRouter } from "react-router-dom";
 import App from "./App";
 import { DEMO } from "./lib/demo";
+import { I18nProvider } from "./lib/i18n";
 import "./styles.css";
 
 // GitHub Pages nao tem rewrite: `/Zephyr/overview` cairia em 404 antes de o
@@ -12,8 +13,10 @@ const Router = DEMO ? HashRouter : BrowserRouter;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Router>
-      <App />
-    </Router>
+    <I18nProvider>
+      <Router>
+        <App />
+      </Router>
+    </I18nProvider>
   </React.StrictMode>
 );

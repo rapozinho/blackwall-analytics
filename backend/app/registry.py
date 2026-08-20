@@ -5,6 +5,10 @@ Cada entrada: id, label, description, bases suportadas, params (spec p/ o form),
 `kind` (como o frontend renderiza) e loader `load(base_key, params, on_progress=None)`.
 O frontend descobre tudo via /api.
 
+Rotulo, descricao e spec de filtro NAO ficam prontos aqui: dependem do idioma
+da requisicao (e a descricao, tambem da vertical). O registry guarda a chave e o
+callable; `public_meta()` resolve na hora de responder.
+
 `kind`:
   - "dashboard" -> painel de leitura (KPIs, série, pizzas)
   - "chart"     -> view dedicada (ex.: RetentionCohortView)
@@ -13,29 +17,34 @@ O frontend descobre tudo via /api.
 O `kind` também separa as duas seções da galeria: "dashboard"/"chart" ficam em
 Dashboards; "tables" em Extrações.
 """
+from functools import partial
+
 from . import vertical
 from .charts import overview, retention_cohort
+from .i18n import msg
 from .reports import report_master, tabular
 
 CHARTS = {
     "overview": {
         "id": "overview",
-        "label": "Overview operacional",
-        # Descricao vem da vertical: o mesmo painel fala de GGR ou de receita.
-        "description": vertical.t("overview_desc"),
+        # `label_msg`/`desc_termo` sao chaves, nao texto: o rotulo depende do
+        # idioma e a descricao tambem da vertical, e as duas coisas so' se sabem
+        # na requisicao. Nome proprio (Monitoring, Report Master) fica em `label`.
+        "label_msg": "chart_overview",
+        "desc_termo": "overview_desc",
         "bases": overview.BASES,
         "kind": "dashboard",
-        "params": overview.PARAMS,
+        "params": overview.params,
         "load": overview.load,
         "required_tables": overview.REQUIRED_TABLES,
     },
     "retention_cohort": {
         "id": "retention_cohort",
         "label": "Retention Cohort",
-        "description": vertical.t("retention_desc"),
+        "desc_termo": "retention_desc",
         "bases": ["Zephyr", "Quasar", "Lumen"],  # Kestrel: habilitar quando tiver retention
         "kind": "chart",
-        "params": retention_cohort.PARAMS,
+        "params": retention_cohort.params,
         "load": retention_cohort.load,
         "required_tables": retention_cohort.REQUIRED_TABLES,
     },
@@ -44,35 +53,44 @@ CHARTS = {
 CHARTS["report_master"] = {
     "id": "report_master",
     "label": "Report Master",
-    "description": vertical.t("report_master_desc"),
+    "desc_termo": "report_master_desc",
     "bases": report_master.BASES,
     "kind": "tables",
-    "params": report_master.PARAMS,
+    "params": report_master.params,
     "load": report_master.load,
     "required_tables": report_master.REQUIRED_TABLES,
 }
 
 # Reports tabulares (Monitoring, Big Picture) — mesmo SQL do kpi-bot.
 for _rid, _spec in tabular.SPECS.items():
-    _params = dict(tabular._PERIOD_1)
-    if _spec["dual_period"]:
-        _params.update(tabular._PERIOD_2)
     CHARTS[_rid] = {
         "id": _rid,
         "label": _spec["label"],
-        "description": _spec["description"],
+        "desc_termo": _spec["desc_termo"],
         "bases": _spec["bases"],
         "kind": "tables",
-        "params": _params,
+        # `partial` e nao lambda: no lambda o `_rid` do for seria capturado por
+        # referencia e todos os reports ficariam com o filtro do ultimo.
+        "params": partial(tabular.params, _rid),
         "load": tabular.make_loader(_rid),
     }
 
-_PUBLIC_FIELDS = ("id", "label", "description", "bases", "kind", "params")
+_PUBLIC_FIELDS = ("id", "bases", "kind")
+
+
+def label(chart: dict) -> str:
+    """Nome do relatorio na tela. Nome proprio nao se traduz."""
+    return msg(chart["label_msg"]) if "label_msg" in chart else chart["label"]
 
 
 def public_meta(chart: dict) -> dict:
-    """Versão serializável (sem o callable `load`)."""
-    return {k: chart[k] for k in _PUBLIC_FIELDS}
+    """Versao serializavel (sem o callable `load`), resolvida no idioma e na
+    vertical da requisicao."""
+    out = {k: chart[k] for k in _PUBLIC_FIELDS}
+    out["label"] = label(chart)
+    out["description"] = vertical.t(chart["desc_termo"])
+    out["params"] = chart["params"]()
+    return out
 
 
 def charts_for_base(base_key: str) -> list[dict]:

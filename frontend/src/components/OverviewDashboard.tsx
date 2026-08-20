@@ -10,13 +10,15 @@ import {
   type Format, type Grain,
 } from "../lib/viz";
 import type { DashboardData, SeriePonto } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 ChartJS.register(BarElement, CategoryScale, Filler, LineElement, LinearScale, PointElement, Tooltip);
 
+// `label` e chave do catalogo: o texto sai no idioma da tela.
 const GRAOS: { key: Grain; label: string }[] = [
-  { key: "dia", label: "Diário" },
-  { key: "semana", label: "Semanal" },
-  { key: "mes", label: "Mensal" },
+  { key: "dia", label: "diario" },
+  { key: "semana", label: "semanal" },
+  { key: "mes", label: "mensal" },
 ];
 
 /** Métricas da linha do tempo. `split` = tem quebra entre as duas operações.
@@ -40,6 +42,7 @@ const OPS_PADRAO = { casino: "Casino", sports: "Sportsbook" };
 const LIMITE_BARRAS = 62;
 
 function Kpi({ kpi }: { kpi: DashboardData["kpis"][number] }) {
+  const { t } = useI18n();
   const subiu = kpi.delta !== null && kpi.delta > 0;
   const desceu = kpi.delta !== null && kpi.delta < 0;
   const bom = kpi.higher_is_better ? subiu : desceu;
@@ -53,7 +56,9 @@ function Kpi({ kpi }: { kpi: DashboardData["kpis"][number] }) {
       <span className="tile-d" style={cor ? { color: cor } : undefined}>
         <span aria-hidden="true">{subiu ? "▲" : desceu ? "▼" : "—"}</span>
         {delta(kpi.delta, kpi.delta_unit)}
-        <span className="tile-prev">vs {compact(kpi.previous, kpi.format as Format)}</span>
+        <span className="tile-prev">
+          {t("vs", { v: compact(kpi.previous, kpi.format as Format) })}
+        </span>
       </span>
     </div>
   );
@@ -66,6 +71,7 @@ function Evolucao({ series, labels: termos, ops }: {
 }) {
   const [grain, setGrain] = useState<Grain>("dia");
   const [metrica, setMetrica] = useState(METRICAS[0]);
+  const { t } = useI18n();
   const rotulo = (m: { key: string; label: string }) => termos[m.key] ?? m.label;
 
   const buckets = useMemo(() => agrupar(series, grain), [series, grain]);
@@ -143,20 +149,20 @@ function Evolucao({ series, labels: termos, ops }: {
     <section className="panel viz">
       <div className="head">
         <strong>
-          {rotulo(metrica)} por período
+          {t("por_periodo", { m: rotulo(metrica) })}
           {partido && (
             <span className="muted"> · {ops.casino.toLowerCase()} + {ops.sports.toLowerCase()}</span>
           )}
         </strong>
-        <div className="seg" role="group" aria-label="Granularidade">
+        <div className="seg" role="group" aria-label={t("granularidade")}>
           {GRAOS.map((g) => (
             <button key={g.key} className={"seg-btn" + (g.key === grain ? " on" : "")}
-              onClick={() => setGrain(g.key)}>{g.label}</button>
+              onClick={() => setGrain(g.key)}>{t(g.label)}</button>
           ))}
         </div>
       </div>
 
-      <div className="metricas" role="group" aria-label="Métrica">
+      <div className="metricas" role="group" aria-label={t("metrica")}>
         {METRICAS.map((m) => (
           <button key={m.key} className={"pill" + (m.key === metrica.key ? " on" : "")}
             onClick={() => setMetrica(m)}>{rotulo(m)}</button>
@@ -184,9 +190,10 @@ function Evolucao({ series, labels: termos, ops }: {
 
       <div className="viz-foot">
         <span className="muted">
-          {buckets.length} {grain === "dia" ? "dias" : grain === "semana" ? "semanas" : "meses"} ·
-          total {exact(total, metrica.format)}
-          {pico && ` · pico em ${pico.title.toLowerCase()}`}
+          {buckets.length}{" "}
+          {grain === "dia" ? t("dias") : grain === "semana" ? t("semanas") : t("meses")} ·{" "}
+          {t("total_de", { v: exact(total, metrica.format) })}
+          {pico && ` · ${t("pico_em", { p: pico.title.toLowerCase() })}`}
         </span>
       </div>
     </section>
@@ -194,14 +201,15 @@ function Evolucao({ series, labels: termos, ops }: {
 }
 
 export default function OverviewDashboard({ data }: { data: DashboardData }) {
+  const { t } = useI18n();
   if (data.empty)
-    return <p className="muted">Sem movimento no período selecionado.</p>;
+    return <p className="muted">{t("sem_movimento")}</p>;
 
   return (
     <div className="dash">
       <p className="sub dash-periodo">
         <strong>{data.periodo}</strong>
-        <span className="muted"> comparado com {data.periodo_anterior}</span>
+        <span className="muted"> {t("comparado_com", { p: data.periodo_anterior })}</span>
       </p>
 
       {data.notes.map((n, i) => (

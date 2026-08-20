@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, fmtDuration, type BaseHealth, type ChartMeta } from "../lib/api";
+import { useBaseLabel } from "../lib/bases";
+import { useI18n } from "../lib/i18n";
 import { useJobs } from "../lib/jobs";
 import ConsultasAtivas from "../components/ConsultasAtivas";
 import Voltar from "../components/Voltar";
@@ -13,38 +15,37 @@ function ehPainel(c: ChartMeta) {
 
 /** Resume o filtro sem abrir a página: "dois períodos" muda o que você prepara. */
 function periodos(c: ChartMeta) {
-  return "date_start2" in c.params ? "dois períodos" : "um período";
+  return "date_start2" in c.params ? "dois_periodos" : "um_periodo";
 }
 
+// `tag`/`nota` sao chaves do catalogo, resolvidas no idioma da tela.
 const CONEXAO: Record<BaseHealth["status"], { tag: string; cls: string; nota?: string }> = {
-  ok:             { tag: "conectado", cls: "ok" },
-  missing_tables: { tag: "tabelas faltando", cls: "warn",
-                    nota: "Algumas consultas vão falhar: faltam tabelas ou GRANT SELECT." },
-  not_configured: { tag: "sem configuração", cls: "off",
-                    nota: "Falta preencher as credenciais desta base no .env do backend." },
-  error:          { tag: "sem conexão", cls: "err",
-                    nota: "Não foi possível conectar. As consultas vão falhar até isso ser resolvido." },
-  unknown:        { tag: "verificando…", cls: "idle" },
+  ok:             { tag: "st_ok", cls: "ok" },
+  missing_tables: { tag: "st_missing", cls: "warn", nota: "nota_missing" },
+  not_configured: { tag: "st_notcfg", cls: "off", nota: "nota_notcfg" },
+  error:          { tag: "st_error", cls: "err", nota: "nota_error" },
+  unknown:        { tag: "st_unknown", cls: "idle" },
 };
 
 /** Cartão de painel: o custo vem antes do clique, não depois da espera. */
 function CartaoPainel({ base, chart }: { base: string; chart: ChartMeta }) {
   const { duracao } = useJobs();
+  const { t } = useI18n();
   const ultima = duracao(chart.id, base);
 
   return (
     <Link to={`/${base}/${chart.id}`} className="consulta">
-      <span className="consulta-tipo">Painel</span>
+      <span className="consulta-tipo">{t("painel")}</span>
       <h3 className="consulta-nome">{chart.label}</h3>
       <p className="consulta-desc">{chart.description}</p>
       <span className="consulta-pe">
         <span className="consulta-tags">
-          <span className="tag">{periodos(chart)}</span>
-          {"metrics" in chart.params && <span className="tag">métricas</span>}
-          {"variant" in chart.params && <span className="tag">visões</span>}
+          <span className="tag">{t(periodos(chart))}</span>
+          {"metrics" in chart.params && <span className="tag">{t("tag_metricas")}</span>}
+          {"variant" in chart.params && <span className="tag">{t("tag_visoes")}</span>}
         </span>
         <span className="consulta-custo">
-          {ultima ? `última: ${fmtDuration(ultima)}` : "ainda não executado"}
+          {ultima ? t("ultima_exec", { d: fmtDuration(ultima) }) : t("nao_executado")}
         </span>
       </span>
     </Link>
@@ -53,6 +54,7 @@ function CartaoPainel({ base, chart }: { base: string; chart: ChartMeta }) {
 
 function LinhaExtracao({ base, chart }: { base: string; chart: ChartMeta }) {
   const { duracao } = useJobs();
+  const { t } = useI18n();
   const ultima = duracao(chart.id, base);
 
   return (
@@ -60,7 +62,7 @@ function LinhaExtracao({ base, chart }: { base: string; chart: ChartMeta }) {
       <Link to={`/${base}/${chart.id}`} className="extracao">
         <span className="extracao-nome">{chart.label}</span>
         <span className="extracao-desc">{chart.description}</span>
-        <span className="extracao-tag">{periodos(chart)}</span>
+        <span className="extracao-tag">{t(periodos(chart))}</span>
         <span className="extracao-tempo">{ultima ? fmtDuration(ultima) : "—"}</span>
         <span className="extracao-csv" aria-hidden="true">CSV</span>
       </Link>
@@ -73,6 +75,9 @@ export default function GalleryPage() {
   const [charts, setCharts] = useState<ChartMeta[]>([]);
   const [saude, setSaude] = useState<BaseHealth | null>(null);
   const [err, setErr] = useState("");
+  // A rota carrega a chave; a tela mostra o nome da operação.
+  const nome = useBaseLabel(base);
+  const { t } = useI18n();
 
   useEffect(() => {
     if (!base) return;
@@ -92,41 +97,47 @@ export default function GalleryPage() {
 
   return (
     <div>
-      <Voltar para="/" rotulo="Todas as bases" />
-      <div className="crumb"><Link to="/">Bases</Link> / {base}</div>
+      <Voltar para="/" rotulo={t("todas_as_bases")} />
+      <div className="crumb"><Link to="/">{t("bases")}</Link> / {nome}</div>
 
       <header className="base-hero">
         <div className="base-id">
           <span className={`base-led ${conexao.cls}`} aria-hidden="true" />
-          <h1 className="base-nome">{base}</h1>
-          <span className="base-conexao" title={saude?.detail ?? undefined}>{conexao.tag}</span>
+          <h1 className="base-nome">{nome}</h1>
+          <span className="base-conexao" title={saude?.detail ?? undefined}>
+            {t(conexao.tag)}
+          </span>
         </div>
 
         <dl className="base-tel">
-          <div><dt>Banco</dt><dd>{saude?.database ?? "—"}</dd></div>
-          <div><dt>Painéis</dt><dd>{charts.length ? paineis.length : "—"}</dd></div>
-          <div><dt>Extrações</dt><dd>{charts.length ? extracoes.length : "—"}</dd></div>
-          <div><dt>Modo</dt><dd>somente leitura</dd></div>
+          <div><dt>{t("banco")}</dt><dd>{saude?.database ?? "—"}</dd></div>
+          <div><dt>{t("paineis")}</dt><dd>{charts.length ? paineis.length : "—"}</dd></div>
+          <div><dt>{t("extracoes")}</dt><dd>{charts.length ? extracoes.length : "—"}</dd></div>
+          <div><dt>{t("modo")}</dt><dd>{t("somente_leitura")}</dd></div>
         </dl>
       </header>
 
       {conexao.nota && (
         <p className="aviso">
           <span aria-hidden="true">!</span>
-          {conexao.nota}
-          {saude?.missing_tables?.length ? ` Faltando: ${saude.missing_tables.join(", ")}.` : ""}
+          {t(conexao.nota!)}
+          {saude?.missing_tables?.length
+            ? ` ${t("faltando", { t: saude.missing_tables.join(", ") })}.`
+            : ""}
         </p>
       )}
 
-      {err && <p className="err">Erro: {err}</p>}
-      {!err && !charts.length && <p className="muted">Carregando o catálogo desta base…</p>}
+      {err && <p className="err">{t("erro")}: {err}</p>}
+      {!err && !charts.length && <p className="muted">{t("carregando_catalogo")}</p>}
 
       {base && <ConsultasAtivas base={base} />}
 
       {paineis.length > 0 && (
         <section className="secao">
-          <h2 className="secao-t">Painéis<span className="secao-n">{paineis.length}</span></h2>
-          <p className="secao-d">Indicadores e gráficos interativos, para ler na tela.</p>
+          <h2 className="secao-t">
+            {t("paineis")}<span className="secao-n">{paineis.length}</span>
+          </h2>
+          <p className="secao-d">{t("paineis_desc")}</p>
           <div className="consultas-grid">
             {paineis.map((c) => <CartaoPainel key={c.id} base={base!} chart={c} />)}
           </div>
@@ -135,10 +146,10 @@ export default function GalleryPage() {
 
       {extracoes.length > 0 && (
         <section className="secao">
-          <h2 className="secao-t">Extrações<span className="secao-n">{extracoes.length}</span></h2>
-          <p className="secao-d">
-            O mesmo SQL do kpi-bot, em tabela, com download em CSV.
-          </p>
+          <h2 className="secao-t">
+            {t("extracoes")}<span className="secao-n">{extracoes.length}</span>
+          </h2>
+          <p className="secao-d">{t("extracoes_desc")}</p>
           <ul className="extracoes">
             {extracoes.map((c) => <LinhaExtracao key={c.id} base={base!} chart={c} />)}
           </ul>

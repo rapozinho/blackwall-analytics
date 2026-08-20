@@ -4,10 +4,14 @@
 A demo publicada no GitHub Pages nao tem backend nem banco: ela le arquivos JSON
 capturados aqui. Este script sobe nada — ele consome uma API que ja esteja no ar
 (a stack do `docker compose`, ou o uvicorn local) e grava um snapshot de cada
-combinacao grafico x base em `frontend/public/fixtures/`.
+combinacao grafico x base em `frontend/public/fixtures/<idioma>/`.
 
     python tools/gen_fixtures.py --api http://127.0.0.1:8080 \
         --date-start 2026-07-01 --date-end 2026-07-31
+
+Um snapshot POR IDIOMA porque o texto vem do backend: rotulo de metrica, aba de
+report, frase de insight e nome de mes sao resolvidos por `lang=` na requisicao
+(ver `backend/app/i18n.py`). O dado numerico e o mesmo; o texto em volta nao.
 
 Reports tabulares passam de 1 minuto por arquivo: eles entram pelo mesmo caminho
 que o frontend usa (`/start` + polling de `/api/jobs/<id>`), nao por GET direto.
@@ -29,7 +33,6 @@ DESTINO = RAIZ / "frontend" / "public" / "fixtures"
 TIMEOUT = 120
 # Teto de espera de um job. Monitoring na base maior fica perto de 3 min.
 JOB_TIMEOUT = 900
-
 
 # Janela padrao por grafico. O Retention so' faz sentido com varios meses: com
 # 31 dias o grafico tem uma safra so' e a curva de decaimento nao existe.
@@ -53,16 +56,18 @@ EXTRAS = {
 }
 
 
-def get(api: str, caminho: str, timeout: int = TIMEOUT):
-    url = f"{api.rstrip('/')}{caminho}"
+def get(api: str, caminho: str, lang: str, timeout: int = TIMEOUT):
+    sep = "&" if "?" in caminho else "?"
+    url = f"{api.rstrip('/')}{caminho}{sep}lang={lang}"
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
-def salvar(nome: str, payload) -> int:
-    destino = DESTINO / nome
+def salvar(lang: str, nome: str, payload) -> int:
+    pasta = DESTINO / lang
+    pasta.mkdir(parents=True, exist_ok=True)
     texto = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    destino.write_text(texto, encoding="utf-8")
+    (pasta / nome).write_text(texto, encoding="utf-8")
     return len(texto.encode("utf-8"))
 
 
@@ -92,14 +97,14 @@ def params_para(chart: dict, args) -> dict:
     return out
 
 
-def rodar_job(api: str, chart_id: str, base: str, params: dict):
+def rodar_job(api: str, lang: str, chart_id: str, base: str, params: dict):
     """Mesmo fluxo do frontend: start -> polling -> result."""
-    inicio = get(api, f"/api/charts/{chart_id}/start?{qs(base, params)}")
+    inicio = get(api, f"/api/charts/{chart_id}/start?{qs(base, params)}", lang)
     job_id = inicio["job_id"]
     limite = time.monotonic() + JOB_TIMEOUT
     ultimo = -1
     while time.monotonic() < limite:
-        st = get(api, f"/api/jobs/{job_id}")
+        st = get(api, f"/api/jobs/{job_id}", lang)
         if st["progress"] != ultimo:
             ultimo = st["progress"]
             print(f"      {ultimo:3d}% {st['step']}", flush=True)
@@ -111,33 +116,23 @@ def rodar_job(api: str, chart_id: str, base: str, params: dict):
     raise TimeoutError(f"job {job_id} passou de {JOB_TIMEOUT}s")
 
 
-def main() -> int:
-    p = argparse.ArgumentParser()
-    p.add_argument("--api", default="http://127.0.0.1:8080")
-    p.add_argument("--date-start", default="2026-07-01")
-    p.add_argument("--date-end", default="2026-07-31")
-    # Periodo de comparacao (Monitoring, Big Picture - Acquisition).
-    p.add_argument("--date-start2", default="2026-06-01")
-    p.add_argument("--date-end2", default="2026-06-30")
-    p.add_argument("--only", default="", help="filtra por id de grafico (csv)")
-    args = p.parse_args()
-
-    DESTINO.mkdir(parents=True, exist_ok=True)
-    filtro = {s for s in args.only.split(",") if s}
-
+def capturar(api: str, lang: str, args) -> dict:
+    """Snapshot completo de um idioma. Devolve o manifesto."""
+    print(f"\n===== idioma {lang} =====", flush=True)
     manifesto = {
         "gerado_em": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "lang": lang,
         "periodo": {"date_start": args.date_start, "date_end": args.date_end},
         "periodo_comparacao": {"date_start2": args.date_start2, "date_end2": args.date_end2},
         "entradas": {},
         "falhas": {},
     }
+    filtro = {s for s in args.only.split(",") if s}
 
-    print("== catalogo ==", flush=True)
-    bases = get(args.api, "/api/bases")
-    salvar("bases.json", bases)
-    meta = get(args.api, "/api/meta")
-    salvar("meta.json", meta)
+    bases = get(api, "/api/bases", lang)
+    salvar(lang, "bases.json", bases)
+    meta = get(api, "/api/meta", lang)
+    salvar(lang, "meta.json", meta)
     # A vertical fica no manifesto: o snapshot inteiro depende dela (rotulo E
     # ordem de grandeza do dado), e sem isso nao da para saber o que foi
     # capturado olhando so' os arquivos.
@@ -146,19 +141,19 @@ def main() -> int:
 
     # health/db testa as 4 bases em sequencia com 5s de timeout cada.
     try:
-        saude = get(args.api, "/api/health/db", timeout=60)
+        saude = get(api, "/api/health/db", lang, timeout=60)
         # Na demo nenhuma conexao e' aberta: o "ok" da tela e' o do dia da
         # captura, e a linha de detalhe precisa dizer isso.
         for b in saude.get("bases", []):
-            b["detail"] = "snapshot da demonstração — nenhuma conexão foi aberta aqui"
-        salvar("health.json", saude)
+            b["detail"] = SEM_CONEXAO[lang]
+        salvar(lang, "health.json", saude)
     except Exception as e:                                   # pragma: no cover
         print(f"  health/db falhou ({e}); demo usa fallback sintetico", flush=True)
 
     catalogo = {}
     for b in bases:
-        charts = get(args.api, f"/api/charts?base={urllib.parse.quote(b['key'])}")
-        salvar(f"charts__{b['key']}.json", charts)
+        charts = get(api, f"/api/charts?base={urllib.parse.quote(b['key'])}", lang)
+        salvar(lang, f"charts__{b['key']}.json", charts)
         catalogo[b["key"]] = charts
 
     total_bytes = 0
@@ -173,19 +168,21 @@ def main() -> int:
 
             for sufixo, params in variacoes:
                 chave = f"{chart['id']}__{base_key}" + (f"__{sufixo}" if sufixo else "")
-                print(f"-- {chave}  {params}", flush=True)
+                print(f"-- [{lang}] {chave}", flush=True)
                 t0 = time.monotonic()
                 try:
                     if chart["kind"] == "tables":
-                        payload = rodar_job(args.api, chart["id"], base_key, params)
+                        payload = rodar_job(api, lang, chart["id"], base_key, params)
                     else:
-                        payload = get(args.api, f"/api/charts/{chart['id']}/data?{qs(base_key, params)}")
+                        payload = get(
+                            api, f"/api/charts/{chart['id']}/data?{qs(base_key, params)}", lang
+                        )
                 except Exception as e:
                     print(f"   FALHOU: {str(e)[:200]}", flush=True)
                     manifesto["falhas"][chave] = str(e)[:300]
                     continue
                 nome = f"data__{chave}.json"
-                tam = salvar(nome, payload)
+                tam = salvar(lang, nome, payload)
                 total_bytes += tam
                 manifesto["entradas"][chave] = {
                     "arquivo": nome, "params": params, "kind": chart["kind"],
@@ -197,10 +194,49 @@ def main() -> int:
                 }
                 print(f"   ok {tam/1024:.0f} KB em {time.monotonic()-t0:.0f}s", flush=True)
 
-    salvar("manifest.json", manifesto)
-    print(f"\n{len(manifesto['entradas'])} fixtures, {total_bytes/1024/1024:.1f} MB total")
-    if manifesto["falhas"]:
-        print("falhas:", ", ".join(manifesto["falhas"]))
+    salvar(lang, "manifest.json", manifesto)
+    print(f"[{lang}] {len(manifesto['entradas'])} fixtures, {total_bytes/1024/1024:.1f} MB",
+          flush=True)
+    return manifesto
+
+
+# A linha de detalhe do health e' a unica coisa que este script escreve em vez de
+# copiar da API — entao ela tambem precisa dos tres idiomas.
+SEM_CONEXAO = {
+    "pt": "snapshot da demonstração — nenhuma conexão foi aberta aqui",
+    "es": "snapshot de la demostración — aquí no se abrió ninguna conexión",
+    "en": "demo snapshot — no connection was opened here",
+}
+
+
+def main() -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument("--api", default="http://127.0.0.1:8080")
+    p.add_argument("--langs", default="pt,es,en", help="idiomas a capturar (csv)")
+    p.add_argument("--date-start", default="2026-07-01")
+    p.add_argument("--date-end", default="2026-07-31")
+    # Periodo de comparacao (Monitoring, Big Picture - Acquisition).
+    p.add_argument("--date-start2", default="2026-06-01")
+    p.add_argument("--date-end2", default="2026-06-30")
+    p.add_argument("--only", default="", help="filtra por id de grafico (csv)")
+    args = p.parse_args()
+
+    langs = [l.strip() for l in args.langs.split(",") if l.strip()]
+    desconhecidos = [l for l in langs if l not in SEM_CONEXAO]
+    if desconhecidos:
+        print(f"idioma sem suporte: {desconhecidos}", file=sys.stderr)
+        return 2
+
+    DESTINO.mkdir(parents=True, exist_ok=True)
+    falhas_totais = {}
+    for lang in langs:
+        m = capturar(args.api, lang, args)
+        falhas_totais.update({f"{lang}/{k}": v for k, v in m["falhas"].items()})
+
+    print(f"\nidiomas: {', '.join(langs)}")
+    if falhas_totais:
+        print("falhas:", ", ".join(falhas_totais))
+        return 1
     return 0
 
 

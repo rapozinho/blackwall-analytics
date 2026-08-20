@@ -11,12 +11,13 @@ from typing import Any, Sequence
 import pyodbc
 
 from . import cancel
-from .config import settings, BASE_KEYS
+from .config import BASE_KEYS, settings
+from .i18n import msg
 
 
 def _conn_str(base_key: str) -> str:
     if base_key not in BASE_KEYS:
-        raise ValueError(f"Base inválida: {base_key!r}")
+        raise ValueError(msg("erro_base_valor", b=repr(base_key)))
     partes = [
         f"DRIVER={{{settings.ODBC_DRIVER}}}",
         f"SERVER={settings.SERVER}",

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TableData } from "../lib/api";
 import { download, fileName, toCSV } from "../lib/csv";
+import { locale, useI18n } from "../lib/i18n";
 
 interface Props {
   data: { base: string; periodo: string; empty: boolean; tables: TableData[] };
@@ -8,25 +9,27 @@ interface Props {
   reportLabel?: string;
 }
 
-const nf = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
-// Percentual sempre com 2 casas: coluna de variação fica alinhada na tabela.
-const pf = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
+// Formatadores por idioma, montados na hora: a tabela e' a tela com mais numeros
+// e refazer o Intl.NumberFormat por celula custaria caro.
 function fmt(v: string | number | null, isPercent = false) {
   if (v === null || v === undefined || v === "") return "–";
   if (typeof v !== "number") return String(v);
-  return isPercent ? `${pf.format(v)}%` : nf.format(v);
+  const loc = locale();
+  return isPercent
+    ? `${v.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+    : v.toLocaleString(loc, { maximumFractionDigits: 2 });
 }
 
 export default function TableReportView({ data, reportLabel }: Props) {
   const [active, setActive] = useState(0);
+  const { t } = useI18n();
 
   if (data.empty)
-    return <p className="muted">Sem dados para o período selecionado.</p>;
+    return <p className="muted">{t("tab_sem_dados")}</p>;
 
-  const t = data.tables[active] ?? data.tables[0];
-  const pct = new Set(t.percent_columns ?? []);
-  const csvName = fileName(data.base, reportLabel ?? t.name, data.periodo);
+  const tabela = data.tables[active] ?? data.tables[0];
+  const pct = new Set(tabela.percent_columns ?? []);
+  const csvName = fileName(data.base, reportLabel ?? tabela.name, data.periodo);
 
   return (
     <div>
@@ -40,7 +43,7 @@ export default function TableReportView({ data, reportLabel }: Props) {
               className={"tab" + (i === active ? " active" : "")}
               onClick={() => setActive(i)}
             >
-              {tb.name}{tb.rows.length === 0 ? " (vazio)" : ""}
+              {tb.name}{tb.rows.length === 0 ? ` (${t("vazio")})` : ""}
             </button>
           ))}
         </div>
@@ -48,28 +51,30 @@ export default function TableReportView({ data, reportLabel }: Props) {
 
       <div className="panel">
         <div className="head">
-          <span>{t.name} <span className="muted">· {t.rows.length} linhas</span></span>
-          <button className="btn ghost" disabled={!t.rows.length}
-            onClick={() => download(toCSV(t.columns, t.rows), csvName)}
+          <span>{tabela.name}{" "}
+            <span className="muted">· {tabela.rows.length} {t("linhas")}</span>
+          </span>
+          <button className="btn ghost" disabled={!tabela.rows.length}
+            onClick={() => download(toCSV(tabela.columns, tabela.rows), csvName)}
             title={csvName}>
-            Baixar CSV
+            {t("baixar_csv")}
           </button>
         </div>
         <div className="body">
-          {t.rows.length === 0 ? (
-            <p className="muted">Esta query não retornou linhas para o período.</p>
+          {tabela.rows.length === 0 ? (
+            <p className="muted">{t("tab_sem_linhas")}</p>
           ) : (
             <div className="result-wrap">
               <table className="grid-tbl">
                 <thead>
-                  <tr>{t.columns.map((c, i) => <th key={i}>{c || " "}</th>)}</tr>
+                  <tr>{tabela.columns.map((c, i) => <th key={i}>{c || " "}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {t.rows.map((row, ri) => (
+                  {tabela.rows.map((row, ri) => (
                     <tr key={ri}>
                       {row.map((v, ci) => (
                         <td key={ci} className={typeof v === "number" ? "num" : undefined}>
-                          {fmt(v, pct.has(t.columns[ci]))}
+                          {fmt(v, pct.has(tabela.columns[ci]))}
                         </td>
                       ))}
                     </tr>
@@ -82,10 +87,10 @@ export default function TableReportView({ data, reportLabel }: Props) {
       </div>
 
       <p className="sub" style={{ marginTop: 12 }}>
-        Origem: {t.sources.map((s, i) => (
+        {t("tab_origem")} {tabela.sources.map((s, i) => (
           <span key={s}>{i > 0 && ", "}<code>{s}</code></span>
-        ))} — mesmo SQL do kpi-bot.
-        {pct.size > 0 && " Percentuais são exibidos com % e exportados como número no CSV."}
+        ))} {t("tab_mesmo_sql")}
+        {pct.size > 0 && ` ${t("tab_percent_nota")}`}
       </p>
     </div>
   );

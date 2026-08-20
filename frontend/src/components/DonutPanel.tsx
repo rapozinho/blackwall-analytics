@@ -4,6 +4,7 @@ import {
   Chart as ChartJS, ArcElement, Tooltip, type ChartOptions,
 } from "chart.js";
 import { SERIES, REST, SURFACE, MAX_SLICES, compact, exact, type Format } from "../lib/viz";
+import { tr, useI18n } from "../lib/i18n";
 import type { Donut } from "../lib/api";
 
 ChartJS.register(ArcElement, Tooltip);
@@ -18,18 +19,27 @@ function recortar(slices: Donut["slices"], metric: string) {
     .sort((a, b) => b.value - a.value);
 
   // "Outros" do SQL entra na mesma sacola do "Outros" da tela: uma fatia só.
-  const nomeados = ordenado.filter((s) => s.label !== "Outros");
+  // O texto vem traduzido do backend, entao a comparacao aceita os tres.
+  const nomeados = ordenado.filter((s) => !ehOutros(s.label));
   const visiveis = nomeados.slice(0, MAX_SLICES);
-  const resto = [...nomeados.slice(MAX_SLICES), ...ordenado.filter((s) => s.label === "Outros")];
+  const resto = [...nomeados.slice(MAX_SLICES), ...ordenado.filter((s) => ehOutros(s.label))];
   const somaResto = resto.reduce((a, s) => a + s.value, 0);
 
   return {
-    fatias: somaResto > 0 ? [...visiveis, { label: "Outros", value: somaResto }] : visiveis,
+    fatias: somaResto > 0
+      ? [...visiveis, { label: tr("outros"), value: somaResto }]
+      : visiveis,
     agrupadas: resto.length,
   };
 }
 
+/** A fatia "resto" do SQL chega traduzida ("Outros"/"Otros"/"Others"): a
+ *  deteccao aceita os tres, senao trocar de idioma criaria duas sacolas. */
+const RESTO = new Set(["Outros", "Otros", "Others"]);
+const ehOutros = (label: string) => RESTO.has(label);
+
 export default function DonutPanel({ donut }: { donut: Donut }) {
+  const { t } = useI18n();
   const [metric, setMetric] = useState(donut.metrics[0].key);
   const [foco, setFoco] = useState<number | null>(null);
   const [tabela, setTabela] = useState(false);
@@ -38,7 +48,7 @@ export default function DonutPanel({ donut }: { donut: Donut }) {
   const formato = spec.format as Format;
   const { fatias, agrupadas } = useMemo(() => recortar(donut.slices, metric), [donut, metric]);
   const total = fatias.reduce((a, s) => a + s.value, 0);
-  const cor = (i: number) => (fatias[i]?.label === "Outros" ? REST : SERIES[i % SERIES.length]);
+  const cor = (i: number) => (ehOutros(fatias[i]?.label ?? "") ? REST : SERIES[i % SERIES.length]);
 
   if (!fatias.length)
     return (
@@ -139,10 +149,10 @@ export default function DonutPanel({ donut }: { donut: Donut }) {
       <div className="viz-foot">
         <span className="muted">
           {donut.description}
-          {agrupadas > 1 && ` ${agrupadas} itens menores estão somados em “Outros”.`}
+          {agrupadas > 1 && ` ${t("itens_somados", { n: agrupadas })}`}
         </span>
         <button className="link-btn" onClick={() => setTabela((t) => !t)}>
-          {tabela ? "Ocultar tabela" : "Ver tabela"}
+          {tabela ? t("ocultar_tabela") : t("ver_tabela")}
         </button>
       </div>
 
@@ -152,7 +162,10 @@ export default function DonutPanel({ donut }: { donut: Donut }) {
             <table className="grid-tbl">
               <thead>
                 <tr>
-                  <th>{donut.label.replace("Receita por ", "").replace("Aquisição por ", "")}</th>
+                  {/* O rotulo do donut ja diz a metrica ("Receita por seller");
+                      a coluna quer so' a dimensao, e ela nao vem separada no
+                      payload — "Categoria" serve nos tres idiomas. */}
+                  <th>{t("categoria")}</th>
                   {donut.metrics.map((m) => <th key={m.key} className="num-h">{m.label}</th>)}
                 </tr>
               </thead>

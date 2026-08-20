@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type AppMeta, type Base, type BaseHealth } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import Blackwall from "../components/Blackwall";
 import ConsultasAtivas from "../components/ConsultasAtivas";
 
-/** Status do backend -> rótulo do portal. O LED diz se dá para entrar, não é enfeite. */
-const STATUS: Record<BaseHealth["status"], { tag: string; cls: string; help: string }> = {
-  ok:              { tag: "conectado",     cls: "ok",   help: "Base respondendo e com as tabelas necessárias." },
-  missing_tables:  { tag: "tabelas faltando", cls: "warn", help: "Conecta, mas faltam tabelas ou GRANT SELECT." },
-  not_configured:  { tag: "sem configuração", cls: "off",  help: "Falta preencher o .env desta base." },
-  error:           { tag: "sem conexão",   cls: "err",  help: "Não foi possível conectar." },
-  unknown:         { tag: "verificando…",  cls: "idle", help: "Testando a conexão." },
+/** Status do backend -> rótulo do portal. O LED diz se dá para entrar, não é
+ *  enfeite. `tag`/`help` são chaves do catálogo: o texto sai no idioma da tela. */
+const STATUS: Record<BaseHealth["status"], { tag: string; cls: string }> = {
+  ok:              { tag: "st_ok",      cls: "ok" },
+  missing_tables:  { tag: "st_missing", cls: "warn" },
+  not_configured:  { tag: "st_notcfg",  cls: "off" },
+  error:           { tag: "st_error",   cls: "err" },
+  unknown:         { tag: "st_unknown", cls: "idle" },
 };
 
 const BREACH_MS = 620;
@@ -25,6 +27,7 @@ export default function BasesPage() {
   const [breaching, setBreaching] = useState<string | null>(null);
   const navigate = useNavigate();
   const timer = useRef<number | undefined>(undefined);
+  const { t } = useI18n();
 
   useEffect(() => {
     api.bases().then(setBases).catch((e) => setErr(e.message));
@@ -56,22 +59,20 @@ export default function BasesPage() {
       <div className="bw-grain" aria-hidden="true" />
 
       <section className="wall-hero">
-        <p className="eyebrow">Netwatch · perímetro analítico</p>
+        <p className="eyebrow">{t("eyebrow")}</p>
         <h1 className="wall-title" data-text="BLACKWALL">BLACKWALL</h1>
-        <p className="wall-lede">
-          Cada operação fica atrás da parede. Escolha uma para atravessar e consultar os dados.
-        </p>
+        <p className="wall-lede">{t("lede")}</p>
         <dl className="wall-readout">
-          <div><dt>Portais</dt><dd>{bases.length || "—"}</dd></div>
-          <div><dt>Conectados</dt><dd>{checking ? "…" : online}</dd></div>
-          <div><dt>Vertical</dt><dd>{meta?.label ?? "…"}</dd></div>
-          <div><dt>Modo</dt><dd>somente leitura</dd></div>
+          <div><dt>{t("portais")}</dt><dd>{bases.length || "—"}</dd></div>
+          <div><dt>{t("conectados")}</dt><dd>{checking ? "…" : online}</dd></div>
+          <div><dt>{t("vertical")}</dt><dd>{meta?.label ?? "…"}</dd></div>
+          <div><dt>{t("modo")}</dt><dd>{t("somente_leitura")}</dd></div>
         </dl>
       </section>
 
       <ConsultasAtivas />
 
-      {err && <p className="err wall-err">Não foi possível carregar as bases: {err}</p>}
+      {err && <p className="err wall-err">{t("bases_erro", { e: err })}</p>}
 
       <ul className="gates" onMouseLeave={() => setFocus(null)}>
         {bases.map((b, i) => {
@@ -91,16 +92,21 @@ export default function BasesPage() {
                 <span className="gate-slot" aria-hidden="true">
                   <i /><i /><i />
                 </span>
-                <span className="gate-key">{b.key}</span>
+                {/* Um nome por card: o rótulo da operação. A chave (`Zephyr`)
+                    continua na rota e no catálogo de SQL, mas mostrar as duas
+                    era pedir para o leitor decidir qual é o nome da base. */}
                 <span className="gate-label">{b.label}</span>
-                <span className={"gate-status " + st.cls} title={h?.detail ?? st.help}>
-                  <em aria-hidden="true" />{st.tag}
+                <span className={"gate-status " + st.cls}
+                  title={h?.detail ?? t(`${st.tag}_help`)}>
+                  <em aria-hidden="true" />{t(st.tag)}
                 </span>
                 {blocked && h?.status === "missing_tables" && h.missing_tables.length > 0 && (
-                  <span className="gate-note">Faltando: {h.missing_tables.join(", ")}</span>
+                  <span className="gate-note">
+                    {t("faltando", { t: h.missing_tables.join(", ") })}
+                  </span>
                 )}
                 <span className="gate-go">
-                  {breaching === b.key ? "Abrindo…" : "Abrir gráficos"}
+                  {breaching === b.key ? t("abrindo") : t("abrir_graficos")}
                 </span>
               </a>
             </li>
@@ -109,9 +115,7 @@ export default function BasesPage() {
         {!bases.length && !err && <li className="gate-skel" aria-hidden="true" />}
       </ul>
 
-      <p className="wall-foot">
-        Consultas somente leitura. Bases com falha continuam navegáveis — o erro aparece na consulta.
-      </p>
+      <p className="wall-foot">{t("bases_foot")}</p>
     </div>
   );
 }

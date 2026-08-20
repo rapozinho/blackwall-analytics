@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ParamSpec } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -13,15 +14,15 @@ function diasAtras(n: number) {
 /** Atalhos de período. Digitar duas datas para toda consulta é o atrito que mais
  *  aparece no uso diário; a janela padrão são os últimos 30 dias. */
 const ATALHOS: { label: string; range: () => [Date, Date] }[] = [
-  { label: "7 dias", range: () => [diasAtras(7), diasAtras(1)] },
-  { label: "30 dias", range: () => [diasAtras(30), diasAtras(1)] },
-  { label: "90 dias", range: () => [diasAtras(90), diasAtras(1)] },
+  { label: "atalho_7", range: () => [diasAtras(7), diasAtras(1)] },
+  { label: "atalho_30", range: () => [diasAtras(30), diasAtras(1)] },
+  { label: "atalho_90", range: () => [diasAtras(90), diasAtras(1)] },
   {
-    label: "Este mês",
+    label: "atalho_mes",
     range: () => { const h = new Date(); return [new Date(h.getFullYear(), h.getMonth(), 1), h]; },
   },
   {
-    label: "Mês passado",
+    label: "atalho_mes_passado",
     range: () => {
       const h = new Date();
       return [new Date(h.getFullYear(), h.getMonth() - 1, 1), new Date(h.getFullYear(), h.getMonth(), 0)];
@@ -52,6 +53,7 @@ export default function DynamicFilter({
    *  usado pelo modo demonstração, onde só existe o que está em disco. */
   atalhos?: { label: string; params: Record<string, string> }[];
 }) {
+  const { t } = useI18n();
   const temPeriodo = "date_start" in params && "date_end" in params;
   const temComparacao = "date_start2" in params && "date_end2" in params;
 
@@ -139,9 +141,7 @@ export default function DynamicFilter({
               {a.label}
             </button>
           ))}
-          <span className="muted atalhos-nota">
-            snapshots capturados — outro filtro cai no primeiro da lista
-          </span>
+          <span className="muted atalhos-nota">{t("snapshots_nota")}</span>
         </div>
       )}
 
@@ -149,13 +149,11 @@ export default function DynamicFilter({
         <div className="atalhos">
           {ATALHOS.map((a) => (
             <button key={a.label} className="pill" onClick={() => aplicarAtalho(a.range)}>
-              {a.label}
+              {t(a.label)}
             </button>
           ))}
           {temComparacao && (
-            <span className="muted atalhos-nota">
-              o atalho preenche também o período de comparação
-            </span>
+            <span className="muted atalhos-nota">{t("atalho_nota")}</span>
           )}
         </div>
       )}
@@ -209,7 +207,7 @@ export default function DynamicFilter({
           return null;
         })}
         <button className="btn" disabled={!ready || loading} onClick={submit}>
-          {loading ? "Consultando…" : "Consultar"}
+          {loading ? t("consultando") : t("consultar")}
         </button>
       </div>
     </div>

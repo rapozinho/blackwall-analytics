@@ -1,4 +1,5 @@
 import { DEMO, demoJSON } from "./demo";
+import { langAtual, tr } from "./i18n";
 
 export interface Base { key: string; label: string; }
 
@@ -86,13 +87,17 @@ export interface JobStatus {
   result?: any; error?: string;
 }
 
-/** "12,3 s" / "2 min 05 s" — duração de consulta, não timestamp. */
+/** "12,3 s" / "2 min 05 s" — duração de consulta, não timestamp.
+ *  A vírgula decimal segue o idioma: em inglês sai "12.3 s". */
 export function fmtDuration(seconds: number): string {
   // 59.96 arredondaria para "60,0 s": acima disso já sai em minutos.
-  if (seconds < 59.95) return `${seconds.toFixed(1).replace(".", ",")} s`;
+  if (seconds < 59.95) {
+    const v = seconds.toFixed(1);
+    return tr("dur_s", { v: langAtual() === "en" ? v : v.replace(".", ",") });
+  }
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds - m * 60);
-  return `${m} min ${String(s).padStart(2, "0")} s`;
+  return tr("dur_min", { m, s: String(s).padStart(2, "0") });
 }
 
 export interface TableData {
@@ -103,7 +108,19 @@ export interface TableData {
   rows: (string | number | null)[][];
 }
 
+/** Acrescenta `lang=` a qualquer rota da API.
+ *
+ * O backend responde rotulo de metrica, aba de report, insight e erro de
+ * validacao no idioma pedido (ver `backend/app/i18n.py`) — mandar o idioma em
+ * toda chamada e mais simples do que decidir quais respostas tem texto.
+ */
+function comIdioma(url: string): string {
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}lang=${langAtual()}`;
+}
+
 async function getJSON<T>(url: string, init?: RequestInit): Promise<T> {
+  url = comIdioma(url);
   // Build de demonstracao (GitHub Pages): nao existe /api do outro lado, e o
   // snapshot em `public/fixtures/` responde no lugar. Ver `lib/demo.ts`.
   if (DEMO) return demoJSON<T>(url, init);

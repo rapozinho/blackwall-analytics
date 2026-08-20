@@ -19,6 +19,7 @@ from decimal import Decimal
 from typing import Callable
 
 from .. import vertical
+from ..i18n import msg
 from ..db import run_query
 from ..sqlcat import load_sql, to_parameterized
 
@@ -29,10 +30,13 @@ REQUIRED_TABLES = [
     "payments_agg_hourly", "ftd_agg", "acquisitions_agg",
 ]
 
-PARAMS = {
-    "date_start": {"type": "date", "label": "Início", "required": True},
-    "date_end":   {"type": "date", "label": "Fim", "required": True},
-}
+def params() -> dict:
+    """Spec do filtro. Funcao e nao constante porque o rotulo depende do idioma
+    da requisicao — o mesmo processo serve `pt`, `es` e `en`."""
+    return {
+        "date_start": {"type": "date", "label": msg("param_inicio"), "required": True},
+        "date_end":   {"type": "date", "label": msg("param_fim"), "required": True},
+    }
 
 _SQL_DIR = "_common/overview"
 
@@ -74,7 +78,7 @@ def _parse_date(raw: str, field: str) -> date:
     try:
         return datetime.strptime((raw or "").strip(), "%Y-%m-%d").date()
     except (ValueError, TypeError):
-        raise ValueError(f"Data inválida em '{field}' (use AAAA-MM-DD).")
+        raise ValueError(msg("erro_data_campo", campo=field))
 
 
 def _periodos(params: dict) -> tuple[dict, str, str]:
@@ -82,7 +86,7 @@ def _periodos(params: dict) -> tuple[dict, str, str]:
     ini = _parse_date(params.get("date_start"), "date_start")
     fim = _parse_date(params.get("date_end"), "date_end")
     if fim < ini:
-        raise ValueError("Período inválido: fim antes do início.")
+        raise ValueError(msg("erro_periodo"))
 
     dias = (fim - ini).days + 1
     fim2 = ini - timedelta(days=1)
@@ -207,10 +211,10 @@ def load(base_key: str, params: dict, on_progress: Callable | None = None) -> di
     values, periodo, periodo_anterior = _periodos(params)
 
     consultas = [
-        ("kpis",       "ov_kpis",       "Indicadores do período"),
-        ("timeseries", "ov_timeseries", "Série diária"),
-        ("channel",    "ov_channel",    "Canais de aquisição"),
-        ("provider",   "ov_provider",   "Provedores e verticais"),
+        ("kpis",       "ov_kpis",       msg("passo_kpis")),
+        ("timeseries", "ov_timeseries", msg("passo_serie")),
+        ("channel",    "ov_channel",    msg("passo_canais")),
+        ("provider",   "ov_provider",   msg("passo_provedores")),
     ]
 
     feito = 0
@@ -222,7 +226,8 @@ def load(base_key: str, params: dict, on_progress: Callable | None = None) -> di
 
     resultados: dict[str, list[dict]] = {}
     if on_progress:
-        on_progress(2, "Consultando " + ", ".join(c[2].lower() for c in consultas))
+        on_progress(2, msg("passo_consultando",
+                                o=", ".join(c[2].lower() for c in consultas)))
 
     # `as_completed` e nao `map`: com map o progresso so andaria na ordem da lista
     # e a fila inteira ficaria presa atras da consulta mais lenta (a de KPIs).

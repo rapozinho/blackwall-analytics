@@ -38,6 +38,11 @@ por cliente. O mesmo código serve a vertical de apostas com `VERTICAL=bet`
 (seção [Duas verticais no mesmo código](#duas-verticais-no-mesmo-código)); trocar
 a publicação é regerar os fixtures com a stack na outra vertical.
 
+As três bandeiras no canto direito do topo trocam o idioma da aplicação inteira —
+**português, espanhol e inglês** — incluindo o que é gerado no backend: rótulo de
+métrica, aba de report, frase de insight e mensagem de erro. Ver
+[Três idiomas](#três-idiomas).
+
 Para ver a coisa consultando o banco de verdade — as 292 queries T-SQL, o job com
 progresso, o cancelamento derrubando a query no servidor — é `docker compose up`
 na sua máquina (seção seguinte).
@@ -414,12 +419,17 @@ entra no lugar do `fetch("/api/...")` de `lib/api.ts` e responde a partir de
 
 ```
 tools/gen_fixtures.py  --api http://127.0.0.1:8080   # captura contra a stack real
-  -> frontend/public/fixtures/manifest.json           # que params geraram cada arquivo
-  -> frontend/public/fixtures/data__<grafico>__<base>[__<variacao>].json
+  -> frontend/public/fixtures/<pt|es|en>/manifest.json   # params de cada arquivo
+  -> frontend/public/fixtures/<pt|es|en>/data__<grafico>__<base>[__<variacao>].json
 ```
 
 O snapshot cobre os 6 relatórios nas 4 bases, mais variações de período no
-Overview e as três visões do Retention Cohort — 39 arquivos, ~300 KB.
+Overview e as três visões do Retention Cohort: 39 payloads por idioma, 141
+arquivos no total, ~1,3 MB.
+
+**Uma pasta por idioma** porque o texto vem do backend: o mesmo número sai como
+"Receita", "Ingresos" ou "Revenue" conforme o `lang=` da requisição. Trocar a
+bandeira troca a pasta que a demo lê.
 
 A vertical vai gravada em `manifest.json` (`"vertical": "ecommerce"`), porque ela
 muda as duas coisas: o rótulo de cada métrica e a ordem de grandeza do dado
@@ -439,6 +449,52 @@ Detalhes que a demo mantém de propósito, porque são parte do desenho:
 Regerar depois de mexer em gráfico ou report: suba a stack, rode o script e
 comite os fixtures. O deploy é o workflow `.github/workflows/pages.yml`, em todo
 push na `main`.
+
+## Três idiomas
+
+Português, espanhol e inglês, trocados pelas bandeiras no topo. O que muda não é
+só a casca: **o texto gerado no backend também sai traduzido** — nome de KPI,
+descrição de relatório, aba de planilha, frase de insight, abreviação de mês,
+mensagem de erro de validação e até o separador decimal.
+
+O idioma é uma dimensão *ortogonal* à vertical de negócio. A vertical decide qual
+é o conceito (a mesma coluna do warehouse é "GGR" numa operação de apostas e
+"Receita" num e-commerce); o idioma decide em que língua esse conceito aparece:
+
+```
+                       pt              es                en
+bet        .GGR        GGR             GGR               GGR
+ecommerce  .GGR        Receita         Ingresos          Revenue
+ecommerce  .turnover   GMV             GMV               GMV
+ecommerce  .uap        Clientes ativos Clientes activos  Active customers
+```
+
+Três catálogos, separados por origem do texto:
+
+| Arquivo | O que guarda |
+|---|---|
+| `backend/app/vocab/terms.py` | vocabulário de negócio: `[vertical][idioma][chave]` |
+| `backend/app/vocab/glossary.py` | substituições no texto que vem **de dentro do SQL** |
+| `backend/app/vocab/messages.py` | texto de produto: filtro, progresso, erro, insight |
+| `frontend/src/lib/i18n.tsx` | a casca: menu, botão, aviso, rótulo de coluna da tela |
+
+O idioma da requisição vive num `ContextVar` (`backend/app/i18n.py`) fixado por
+uma dependência do router a partir de `?lang=`, e não num parâmetro carregado de
+função em função: quem consome idioma é a *saída*, e ela está espalhada por todo
+o caminho da consulta. Quem sai da thread da requisição leva o contexto por
+cópia — `charts/overview.py` e `reports/report_master.py` já faziam isso pelo id
+do job, e `jobs.py` passou a fazer pelo mesmo motivo.
+
+Duas conferências rodam no import, porque erro de tradução não pode aparecer só
+quando alguém abre aquela tela naquela língua:
+
+- as 6 combinações de `terms.py` (2 verticais × 3 idiomas) têm as mesmas chaves;
+- cada mensagem tem os **mesmos placeholders** nos três idiomas (um `{m}` perdido
+  na tradução seria `KeyError` no meio de uma consulta de 3 minutos).
+
+O que **não** é traduzido, de propósito: o nome das bases (`Nordika` é nome de
+operação, não palavra), os 292 arquivos de T-SQL (o glossário age na saída), e os
+termos de mercado que não se traduzem — GGR, NGR, GMV, take rate, netcash, seller.
 
 ## Adicionar um gráfico novo
 1. Cria o SQL em `backend/app/sql/<grupo>/<id>.sql`.

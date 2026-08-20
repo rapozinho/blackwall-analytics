@@ -11,10 +11,17 @@
  * verdade e nada aqui é carregado.
  */
 
+import { assinarLang, langAtual } from "./i18n";
+
 export const DEMO = import.meta.env.VITE_DEMO === "1";
 
-/** `BASE_URL` já vem com a barra final e com o subcaminho do Pages. */
-const RAIZ = `${import.meta.env.BASE_URL}fixtures/`;
+/** Pasta do snapshot no idioma corrente.
+ *
+ * O texto dos payloads (rotulo de KPI, aba, insight) vem do backend, entao um
+ * snapshot por idioma: `fixtures/pt/`, `fixtures/es/`, `fixtures/en/`.
+ * `BASE_URL` ja vem com a barra final e com o subcaminho do Pages.
+ */
+const raiz = () => `${import.meta.env.BASE_URL}fixtures/${langAtual()}/`;
 
 export interface EntradaFixture {
   arquivo: string;
@@ -43,14 +50,18 @@ export interface Manifesto {
 
 const cache = new Map<string, Promise<unknown>>();
 
+// Trocar de idioma troca a pasta: o que estava em memoria e' do idioma antigo.
+if (DEMO) assinarLang(() => cache.clear());
+
 function arquivo<T>(nome: string): Promise<T> {
-  let p = cache.get(nome) as Promise<T> | undefined;
+  const chave = `${langAtual()}/${nome}`;
+  let p = cache.get(chave) as Promise<T> | undefined;
   if (!p) {
-    p = fetch(RAIZ + nome).then((r) => {
+    p = fetch(raiz() + nome).then((r) => {
       if (!r.ok) throw new Error(`Snapshot ausente: ${nome}`);
       return r.json() as Promise<T>;
     });
-    cache.set(nome, p);
+    cache.set(chave, p);
   }
   return p;
 }
@@ -241,7 +252,8 @@ export async function demoJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const rota = u.pathname.replace(/^\/api/, "");
   const q = u.searchParams;
   const params: Record<string, string> = {};
-  q.forEach((v, k) => { if (k !== "base") params[k] = v; });
+  // `lang` sai fora: ele escolhe a PASTA do snapshot, nao a consulta dentro dela.
+  q.forEach((v, k) => { if (k !== "base" && k !== "lang") params[k] = v; });
   const base = q.get("base") ?? "";
   const metodo = (init?.method ?? "GET").toUpperCase();
 

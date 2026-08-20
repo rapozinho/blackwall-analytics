@@ -6,6 +6,7 @@ import {
 } from "chart.js";
 import { download, fileName, toCSV } from "../lib/csv";
 import { compact } from "../lib/viz";
+import { locale, useI18n } from "../lib/i18n";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
@@ -35,7 +36,8 @@ const fmtK = (v: number) => {
   if (a >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, "") + "M";
   return Number.isInteger(v) ? v + "k" : v.toFixed(1) + "k";
 };
-const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+// Moeda continua BRL nos tres idiomas: o dado e em real. O que muda e a pontuacao.
+const brl = (v: number) => v.toLocaleString(locale(), { style: "currency", currency: "BRL" });
 
 /** Converte o `<b>` dos insights em elemento React.
  *
@@ -96,6 +98,7 @@ function limites(series: Series[], selecionadas: Set<number>) {
 
 function MetricPanel({ metric, base, periodo, variante }:
   { metric: Metric; base: string; periodo: string; variante?: string }) {
+  const { t } = useI18n();
   // Média por jogador anda na casa das centenas: plotar em milhar viraria "0,5k".
   const emReais = metric.unit === "abs";
   const fmtEixo = (v: number) => (emReais ? compact(v, "currency") : fmtK(v));
@@ -128,7 +131,7 @@ function MetricPanel({ metric, base, periodo, variante }:
     interaction: { mode: "nearest", intersect: true, axis: "xy" },
     onClick: (_e, els) => { if (els.length) toggle(els[0].datasetIndex); },
     scales: {
-      x: { type: "linear", title: { display: true, text: "Meses desde a aquisição" }, ticks: { stepSize: 1 }, grid: { display: false } },
+      x: { type: "linear", title: { display: true, text: t("ret_meses_desde") }, ticks: { stepSize: 1 }, grid: { display: false } },
       y: {
         title: { display: true, text: metric.axis ?? `${metric.label} (k)` },
         ticks: { callback: (v) => fmtEixo(Number(v)) },
@@ -144,12 +147,13 @@ function MetricPanel({ metric, base, periodo, variante }:
       tooltip: {
         filter: (item) => none || selected.has(item.datasetIndex),
         callbacks: {
-          title: (items) => `Mês ${items[0].parsed.x}`,
+          // `parsed.x` e `number | null` no tipo do Chart.js: Number() normaliza.
+          title: (items) => t("ret_mes_n", { n: Number(items[0].parsed.x) }),
           // parsed.y é `number | null` no tipo do Chart.js: Number() normaliza.
           label: (item) => `${item.dataset.label} · ${metric.label}: ${fmtPonto(Number(item.parsed.y))}`,
           // Em reais o plotado já é o valor cheio; repetir seria ruído.
           afterLabel: (item) =>
-            emReais ? "" : `Valor exato: ${brl((item.raw as any).exact)}`,
+            emReais ? "" : t("ret_valor_exato", { v: brl((item.raw as any).exact) }),
         },
       },
     },
@@ -175,12 +179,12 @@ function MetricPanel({ metric, base, periodo, variante }:
 
       <div className="panel">
         <div className="head">
-          <strong>Resultado da consulta — {metric.label}</strong>
+          <strong>{t("ret_resultado", { m: metric.label })}</strong>
           <span className="head-acoes">
-            <span className="muted" style={{ fontSize: 11 }}>clique numa linha p/ destacar</span>
+            <span className="muted" style={{ fontSize: 11 }}>{t("ret_clique")}</span>
             <button className="btn ghost" disabled={!rows.length} title={csvName}
               onClick={() => download(toCSV(colunas, linhasCSV), csvName)}>
-              Baixar CSV
+              {t("baixar_csv")}
             </button>
           </span>
         </div>
@@ -196,7 +200,7 @@ function MetricPanel({ metric, base, periodo, variante }:
                       style={on ? { background: fade(colors[r.ci], 0.16), boxShadow: `inset 3px 0 0 ${colors[r.ci]}` } : undefined}>
                       <td><span className="cdot" style={{ background: colors[r.ci] }} />{r.label}</td>
                       <td className="num">{r.mi}</td>
-                      <td className="num">{r.exact.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="num">{r.exact.toLocaleString(locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                   );
                 })}
@@ -207,7 +211,7 @@ function MetricPanel({ metric, base, periodo, variante }:
       </div>
 
       <div className="panel" style={{ marginTop: 16 }}>
-        <div className="head"><strong>Resumo &amp; insights</strong></div>
+        <div className="head"><strong>{t("ret_insights")}</strong></div>
         <div className="body"><ul className="insights">{metric.insights.map((t, i) => <li key={i}>{destacar(t)}</li>)}</ul></div>
       </div>
     </div>
@@ -216,15 +220,16 @@ function MetricPanel({ metric, base, periodo, variante }:
 
 export default function RetentionCohortView({ data }: { data: Data }) {
   const [active, setActive] = useState(0);
-  if (data.empty) return <p className="muted">{data.message ?? "Sem dados."}</p>;
+  const { t } = useI18n();
+  if (data.empty) return <p className="muted">{data.message ?? t("ret_sem_dados")}</p>;
 
   return (
     <div>
       <p className="sub">
-        Período {data.periodo} · {data.variant_label ?? "Total"} ·{" "}
+        {t("ret_periodo", { p: data.periodo })} · {data.variant_label ?? "Total"} ·{" "}
         {data.variant && data.variant !== "total"
-          ? `valores em reais por ${data.unidade_ativo ?? "jogador"} ativo (mês 0 = cohort)`
-          : "valores em milhar (mês 0 = cohort)"}
+          ? t("ret_valores_reais", { u: data.unidade_ativo ?? "" })
+          : t("ret_valores_milhar")}
       </p>
       <div className="tabs">
         {data.metrics.map((m, i) => (

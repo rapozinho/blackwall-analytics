@@ -16,35 +16,53 @@ from typing import Callable
 
 from .. import vertical
 from ..db import run_query
+from ..i18n import msg
 from ..sqlcat import list_sql, load_sql, to_parameterized
 
 ALL_BASES = ["Zephyr", "Quasar", "Lumen", "Kestrel"]
 
 # --- specs de parametros --------------------------------------------------- #
-_PERIOD_1 = {
-    "date_start": {"type": "date", "label": "Início", "required": True},
-    "date_end":   {"type": "date", "label": "Fim", "required": True},
-}
-_PERIOD_2 = {
-    "date_start2": {"type": "date", "label": "Início (comparação)", "required": True},
-    "date_end2":   {"type": "date", "label": "Fim (comparação)", "required": True},
-}
+# Funcoes e nao constantes: o rotulo do filtro depende do idioma da requisicao,
+# e o mesmo processo atende pt, es e en.
+def periodo_1() -> dict:
+    return {
+        "date_start": {"type": "date", "label": msg("param_inicio"), "required": True},
+        "date_end":   {"type": "date", "label": msg("param_fim"), "required": True},
+    }
+
+
+def periodo_2() -> dict:
+    return {
+        "date_start2": {"type": "date", "label": msg("param_inicio_comp"), "required": True},
+        "date_end2":   {"type": "date", "label": msg("param_fim_comp"), "required": True},
+    }
+
+
+def params(report_id: str) -> dict:
+    """Filtro do report: um periodo, ou dois quando ele compara janelas."""
+    spec = SPECS[report_id]
+    out = periodo_1()
+    if spec["dual_period"]:
+        out.update(periodo_2())
+    return out
 
 # --- catalogo de reports --------------------------------------------------- #
 # `files` = lista fixa; `prefix` = varre a pasta (numero de queries varia por base).
 SPECS = {
     "monitoring": {
         "label": "Monitoring",
-        "description": vertical.t("monitoring_desc"),
+        "desc_termo": "monitoring_desc",
         "bases": ALL_BASES,
         "folder": "monitoring",
         "files": ["{p}_monitoring_query.sql", "{p}_monitoring_affiliates_query.sql"],
         "dual_period": True,
-        "labels": {"monitoring_query": "Geral", "monitoring_affiliates_query": "Afiliados"},
+        # Chave de mensagem, nao texto: resolvida por requisicao em `_table_label`.
+        "labels": {"monitoring_query": "tabela_geral",
+                   "monitoring_affiliates_query": "tabela_afiliados"},
     },
     "bp_acquisition": {
         "label": "Big Picture - Acquisition",
-        "description": vertical.t("bpa_desc"),
+        "desc_termo": "bpa_desc",
         "bases": ALL_BASES,
         "folder": "bpa",
         "prefix": "{p}_bpa_query_",
@@ -52,12 +70,12 @@ SPECS = {
         # Cada bpa_query_N devolve 1 linha (um canal) com o MESMO schema — no bot
         # sao abas separadas, aqui viram uma tabela unica. `merge_label` nomeia a
         # 1a coluna, que vem sem nome do SQL.
-        "merge": {"name": vertical.t("bpa_merge_nome"), "file": "bpa.csv",
+        "merge": {"name_termo": "bpa_merge_nome", "file": "bpa.csv",
                   "first_column": "Canal"},
     },
     "bp_distribution": {
         "label": "Big Picture - Distribution",
-        "description": vertical.t("bpd_desc"),
+        "desc_termo": "bpd_desc",
         "bases": ALL_BASES,
         "folder": "bpd",
         "prefix": "{p}_bpd_query_",
@@ -102,7 +120,7 @@ def _parse_date(raw: str, field: str) -> datetime:
     try:
         return datetime.strptime((raw or "").strip(), "%Y-%m-%d")
     except (ValueError, TypeError):
-        raise ValueError(f"Data inválida em '{field}' (use AAAA-MM-DD).")
+        raise ValueError(msg("erro_data_campo", campo=field))
 
 
 def _values(spec: dict, params: dict) -> tuple[dict, str]:
@@ -110,7 +128,7 @@ def _values(spec: dict, params: dict) -> tuple[dict, str]:
     ini = _parse_date(params.get("date_start"), "date_start")
     fim = _parse_date(params.get("date_end"), "date_end")
     if fim < ini:
-        raise ValueError("Período inválido: fim antes do início.")
+        raise ValueError(msg("erro_periodo"))
 
     fmt = "%d/%m/%Y"
     values = {"start1": ini.strftime("%Y-%m-%d"), "end1": fim.strftime("%Y-%m-%d")}
@@ -120,7 +138,7 @@ def _values(spec: dict, params: dict) -> tuple[dict, str]:
         ini2 = _parse_date(params.get("date_start2"), "date_start2")
         fim2 = _parse_date(params.get("date_end2"), "date_end2")
         if fim2 < ini2:
-            raise ValueError("Período de comparação inválido: fim antes do início.")
+            raise ValueError(msg("erro_periodo_comp"))
         values["start2"] = ini2.strftime("%Y-%m-%d")
         values["end2"] = fim2.strftime("%Y-%m-%d")
         periodo += f"  vs  {ini2.strftime(fmt)} – {fim2.strftime(fmt)}"
@@ -147,12 +165,13 @@ def _table_label(spec: dict, relpath: str, base_key: str) -> str:
     suffix = stem[len(base_key) + 1:] if stem.lower().startswith(base_key.lower()) else stem
     explicit = spec.get("labels", {}).get(suffix)
     if explicit:
-        # Passa pelo vocabulario da vertical como qualquer outro texto de saida:
-        # a aba "Afiliados" e "Parceiros" no e-commerce.
-        return vertical.traduz(explicit)
+        # Traduz duas vezes, e as duas sao necessarias: `msg` da o texto no idioma
+        # ("Afiliados"/"Affiliates"), `traduz` aplica o vocabulario da vertical
+        # (no e-commerce, "Parceiros"/"Partners").
+        return vertical.traduz(msg(explicit))
     tail = suffix.split("_")[-1]
     if tail.isdigit():
-        return f"Query {tail}"
+        return msg("passo_query", n=tail)
     return vertical.traduz(suffix.replace("_", " ").title())
 
 
@@ -197,7 +216,7 @@ def _merge(tables: list[dict], cfg: dict) -> list[dict]:
 
     rows = [r for t in tables for r in t["rows"]]
     return [{
-        "name": cfg["name"],
+        "name": vertical.t(cfg["name_termo"]),
         "file": cfg["file"],
         "sources": [s for t in tables for s in t["sources"]],
         "columns": columns,
@@ -216,7 +235,7 @@ def make_loader(report_id: str) -> Callable:
         values, periodo = _values(spec, params)
         files = _files(spec, base_key)
         if not files:
-            raise ValueError(f"Nenhum SQL no catálogo para {report_id}/{base_key}.")
+            raise ValueError(msg("erro_sem_sql", r=report_id, b=base_key))
 
         tables = []
         for i, relpath in enumerate(files):

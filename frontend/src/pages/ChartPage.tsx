@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { api, fmtDuration, type ChartMeta } from "../lib/api";
 import { useJobs } from "../lib/jobs";
 import { DEMO, snapshotsDe } from "../lib/demo";
+import { useBaseLabel } from "../lib/bases";
+import { useI18n } from "../lib/i18n";
 import DynamicFilter from "../components/DynamicFilter";
 import OverviewDashboard from "../components/OverviewDashboard";
 import RetentionCohortView from "../components/RetentionCohortView";
@@ -16,6 +18,8 @@ export default function ChartPage() {
   // Demo: os filtros possiveis sao os snapshots em disco, nao um calendario.
   const [snaps, setSnaps] = useState<{ label: string; params: Record<string, string> }[]>([]);
   const { consultas, iniciar, encerrar } = useJobs();
+  const nome = useBaseLabel(base);
+  const { t } = useI18n();
 
   // A consulta vive no provider: voltar para cá encontra o que ficou rodando —
   // ou o resultado que chegou enquanto o usuário estava em outra tela.
@@ -48,9 +52,9 @@ export default function ChartPage() {
 
   return (
     <div>
-      <Voltar para={`/${base}`} rotulo={`Consultas de ${base}`} />
+      <Voltar para={`/${base}`} rotulo={t("consultas_de", { b: nome })} />
       <div className="crumb">
-        <Link to="/">Bases</Link> / <Link to={`/${base}`}>{base}</Link> / {meta?.label ?? chartId}
+        <Link to="/">{t("bases")}</Link> / <Link to={`/${base}`}>{nome}</Link> / {meta?.label ?? chartId}
       </div>
       <h1>{meta?.label ?? chartId}</h1>
       <p className="sub">{meta?.description}</p>
@@ -67,7 +71,7 @@ export default function ChartPage() {
               iniciais={DEMO ? snaps[0]?.params : undefined}
               atalhos={DEMO && snaps.length ? snaps : undefined}
             />
-          ) : <span className="muted">Carregando filtro…</span>}
+          ) : <span className="muted">{t("carregando_filtro")}</span>}
         </div>
       </div>
 
@@ -76,26 +80,30 @@ export default function ChartPage() {
           <div className="body">
             <div className="progress"><div className="bar" style={{ width: `${consulta.progress}%` }} /></div>
             <p className="sub" style={{ margin: "10px 0 0" }}>
-              {consulta.step ? `Executando: ${consulta.step}` : "Consultando o banco…"}
-              {consulta.elapsed !== null && ` · ${fmtDuration(consulta.elapsed)} até agora`} — pode
-              sair desta tela: a consulta continua e aparece na inicial.
+              {consulta.step
+                ? t("executando", { p: consulta.step })
+                : t("consultando_banco")}
+              {consulta.elapsed !== null
+                && ` · ${t("ate_agora", { d: fmtDuration(consulta.elapsed) })}`}
+              {" — "}{t("pode_sair")}
             </p>
             <button className="btn ghost" style={{ marginTop: 14 }}
               onClick={() => encerrar(consulta.id)}>
-              Encerrar consulta
+              {t("encerrar_consulta")}
             </button>
           </div>
         </div>
       )}
 
       {consulta?.status === "cancelled" && (
-        <p className="sub">Consulta encerrada. Ajuste o filtro e consulte de novo.</p>
+        <p className="sub">{t("consulta_encerrada")}</p>
       )}
 
       {erro && (
         <p className="err">
-          Erro: {erro}
-          {consulta?.elapsed != null && ` (falhou após ${fmtDuration(consulta.elapsed)})`}
+          {t("erro")}: {erro}
+          {consulta?.elapsed != null
+            && ` ${t("falhou_apos", { d: fmtDuration(consulta.elapsed) })}`}
         </p>
       )}
 
@@ -112,7 +120,7 @@ export default function ChartPage() {
 
       {data && consulta?.elapsed != null && (
         <p className="sub" style={{ marginTop: 12 }}>
-          Consulta concluída em {fmtDuration(consulta.elapsed)}.
+          {t("concluida_em", { d: fmtDuration(consulta.elapsed) })}
         </p>
       )}
     </div>

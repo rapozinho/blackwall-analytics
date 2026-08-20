@@ -3,29 +3,39 @@
 import pyodbc
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from .. import jobs, vertical
+from .. import i18n, jobs, vertical
 from ..auth import current_user
 from ..config import BASES, BASE_KEYS, settings
 from ..db import run_query, scrub
-from ..registry import CHARTS, charts_for_base, required_tables_for_base
+from ..i18n import msg
+from ..registry import (CHARTS, charts_for_base, label as chart_label,
+                        required_tables_for_base)
 
-router = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
+async def _idioma(lang: str = Query(i18n.PADRAO, description="pt | es | en")) -> str:
+    """Fixa o idioma desta requisicao para todo o caminho da consulta.
+
+    Dependencia do router e nao parametro de cada rota: quem consome o idioma e
+    a saida (rotulo, aba, insight, erro), em codigo que nao ve a requisicao.
+    Valor invalido cai no padrao — ver `i18n.normaliza`.
+
+    `async` de proposito: dependencia sincrona roda num worker de threadpool com
+    contexto proprio, e o `ContextVar` morreria ali sem chegar ao endpoint. Assim
+    ela roda na task da requisicao, e quem for para thread depois (endpoint sync,
+    job, pool de queries) leva o contexto por copia.
+    """
+    return i18n.set_lang(lang)
+
+
+router = APIRouter(prefix="/api",
+                   dependencies=[Depends(current_user), Depends(_idioma)])
 
 # Login timeout curto: o health check testa 4 bases em sequencia e nao pode
 # ficar pendurado nos 120s do run_query normal.
 _HEALTH_TIMEOUT = 5
 
 # SQLSTATE -> o que olhar primeiro. Erro de ODBC sozinho nao diz onde mexer.
-_SQLSTATE_HINTS = {
-    "08001": "Host/porta inalcancavel: confira SERVER, VPN e se o SQL Server aceita TCP/IP remoto.",
-    "08S01": "Conexao caiu no meio: rede instavel ou firewall cortando a sessao.",
-    "28000": "Login rejeitado: confira DB_USER/DB_PASSWORD.",
-    # 4060 tambem vem como 28000, mas a causa e outra (ver _hint_for).
-    "4060": "Login existe mas nao tem acesso a este database: confira o nome em "
-            "DATABASE_<BASE> e se o usuario read-only tem permissao nele.",
-    "42000": "Conectou no servidor mas nao abriu o database: confira o nome em DATABASE_<BASE>.",
-    "IM002": "Driver ODBC nao encontrado: confira ODBC_DRIVER e o que esta instalado na maquina.",
-}
+# (4060 tambem chega como 28000, mas a causa e outra — ver _hint_for.)
+_SQLSTATE_HINTS = ("08001", "08S01", "28000", "4060", "42000", "IM002")
 
 
 @router.get("/bases")
@@ -48,8 +58,10 @@ def _hint_for(sqlstate: str | None, message: str) -> str | None:
     """SQLSTATE nao basta: 'senha errada' e 'sem acesso ao database' sao os dois
     28000. Desempata pelo erro nativo do SQL Server (4060 = database negado)."""
     if "Cannot open database" in message or "(4060)" in message:
-        return _SQLSTATE_HINTS["4060"]
-    return _SQLSTATE_HINTS.get(sqlstate)
+        return msg("hint_4060")
+    if sqlstate in _SQLSTATE_HINTS:
+        return msg(f"hint_{sqlstate}")
+    return None
 
 
 def _check_base(base: dict) -> dict:
@@ -70,7 +82,7 @@ def _check_base(base: dict) -> dict:
                                   ("DB_USER", settings.DB_USER)) if not v]
     if missing_cfg:
         out["status"] = "not_configured"
-        out["detail"] = "Faltando no .env: " + ", ".join(missing_cfg)
+        out["detail"] = msg("saude_falta_env", vars=", ".join(missing_cfg))
         return out
 
     required = required_tables_for_base(key)
@@ -103,8 +115,7 @@ def _check_base(base: dict) -> dict:
 
     if out["missing_tables"]:
         out["status"] = "missing_tables"
-        out["detail"] = ("Conectou, mas estas tabelas nao aparecem para este usuario "
-                         "(nao existem ou falta GRANT SELECT).")
+        out["detail"] = msg("saude_tabelas")
     else:
         out["status"] = "ok"
     return out
@@ -130,19 +141,19 @@ def health_db():
 @router.get("/charts")
 def list_charts(base: str = Query(...)):
     if base not in BASE_KEYS:
-        raise HTTPException(400, "Base inválida.")
+        raise HTTPException(400, msg("erro_base"))
     return charts_for_base(base)
 
 
 def _resolve(chart_id: str, base: str) -> dict:
     """Whitelist de base + chart. Nada aqui aceita SQL ou nome de tabela do cliente."""
     if base not in BASE_KEYS:
-        raise HTTPException(400, "Base inválida.")
+        raise HTTPException(400, msg("erro_base"))
     chart = CHARTS.get(chart_id)
     if chart is None:
-        raise HTTPException(404, "Gráfico não encontrado.")
+        raise HTTPException(404, msg("erro_grafico_404"))
     if base not in chart["bases"]:
-        raise HTTPException(400, "Gráfico indisponível para esta base.")
+        raise HTTPException(400, msg("erro_grafico_base"))
     return chart
 
 
@@ -163,7 +174,7 @@ def chart_data(chart_id: str, request: Request, base: str = Query(...)):
     except Exception as e:  # falha de DB/execução
         # scrub: o erro do driver pode carregar a string de conexao inteira, e
         # ela vai direto para o navegador. O fluxo de job ja fazia isso.
-        raise HTTPException(500, f"Erro ao consultar dados: {scrub(e)}")
+        raise HTTPException(500, msg("erro_consulta", e=scrub(e)))
 
 
 @router.get("/charts/{chart_id}/start")
@@ -174,7 +185,7 @@ def chart_start(chart_id: str, request: Request, base: str = Query(...)):
     chart = _resolve(chart_id, base)
     params = _params_from(request)
     job_id = jobs.start(
-        f"{chart['label']} ({base})",
+        f"{chart_label(chart)} ({base})",
         lambda progress: chart["load"](base, params, progress),
         chart_id=chart_id, base=base, params=params,
     )
@@ -195,7 +206,7 @@ def job_list():
 def job_status(job_id: str):
     job = jobs.get(job_id)
     if job is None:
-        raise HTTPException(404, "Job não encontrado ou expirado.")
+        raise HTTPException(404, msg("erro_job_404"))
     return job.public()
 
 
@@ -208,5 +219,5 @@ def job_cancel(job_id: str):
     """
     job = jobs.stop(job_id)
     if job is None:
-        raise HTTPException(404, "Job não encontrado ou expirado.")
+        raise HTTPException(404, msg("erro_job_404"))
     return job.public(with_result=False)

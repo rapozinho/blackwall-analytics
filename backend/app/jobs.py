@@ -14,6 +14,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -149,7 +150,9 @@ def start(
                 job.error = scrub(e)
                 job.status = "error"
 
-    _POOL.submit(run)
+    # O contexto da requisicao vai junto: o idioma escolhido vive num ContextVar
+    # (ver i18n.py) e sem esta copia o job responderia sempre em portugues.
+    _POOL.submit(copy_context().run, run)
     return job.id
 
 

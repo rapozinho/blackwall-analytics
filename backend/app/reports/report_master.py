@@ -26,6 +26,7 @@ from typing import Callable
 
 from .. import vertical
 from ..db import run_query
+from ..i18n import msg
 from ..sqlcat import load_sql, to_parameterized
 
 # Kestrel nao tem Report Master no catalogo do bot.
@@ -34,10 +35,12 @@ BASES = ["Zephyr", "Quasar", "Lumen"]
 REQUIRED_TABLES = ("casino_agg_hourly", "sports_agg_hourly", "payments_agg_hourly",
                    "ftd_agg", "acquisitions_agg")
 
-PARAMS = {
-    "date_start": {"type": "date", "label": "Início", "required": True},
-    "date_end":   {"type": "date", "label": "Fim", "required": True},
-}
+def params() -> dict:
+    """Spec do filtro. Funcao porque o rotulo depende do idioma da requisicao."""
+    return {
+        "date_start": {"type": "date", "label": msg("param_inicio"), "required": True},
+        "date_end":   {"type": "date", "label": msg("param_fim"), "required": True},
+    }
 
 # Duas conexoes: mesmo motivo do Overview — mais paralelismo briga pelo mesmo I/O
 # e o servidor e compartilhado com os bots.
@@ -278,7 +281,7 @@ def _parse_date(raw: str, campo: str) -> datetime:
     try:
         return datetime.strptime((raw or "").strip(), "%Y-%m-%d")
     except (ValueError, TypeError):
-        raise ValueError(f"Data inválida em '{campo}' (use AAAA-MM-DD).")
+        raise ValueError(msg("erro_data_campo", campo=campo))
 
 
 # --- montagem das abas ------------------------------------------------------ #
@@ -376,7 +379,7 @@ def load(base_key: str, params: dict, on_progress: Callable | None = None) -> di
     ini = _parse_date(params.get("date_start"), "date_start")
     fim = _parse_date(params.get("date_end"), "date_end")
     if fim < ini:
-        raise ValueError("Período inválido: fim antes do início.")
+        raise ValueError(msg("erro_periodo"))
 
     valores_sql = {"start1": ini.strftime("%Y-%m-%d"), "end1": fim.strftime("%Y-%m-%d")}
     arquivos = _arquivos(base_key)
